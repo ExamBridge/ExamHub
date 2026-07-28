@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Exam Portal</title>
+    <style>
+        :root {
+            --bg-color: #f3f4f6;
+            --card-bg: #ffffff;
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --error: #ef4444;
+            --border: #e5e7eb;
+        }
+
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg-color); color: var(--text-main); margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        
+        .login-card { background: var(--card-bg); padding: 40px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 400px; border: 1px solid var(--border); }
+        .login-card h2 { margin-top: 0; color: var(--primary); font-size: 1.8rem; margin-bottom: 5px; text-align: center; }
+        .login-card p { text-align: center; color: var(--text-muted); margin-bottom: 30px; font-size: 0.95rem; }
+
+        .form-group { margin-bottom: 20px; }
+        label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 8px; color: var(--text-main); text-transform: uppercase; letter-spacing: 0.5px; }
+        input[type="text"] { width: 100%; padding: 12px 15px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; box-sizing: border-box; transition: 0.2s; background: #f9fafb; }
+        input[type="text"]:focus { outline: none; border-color: var(--primary); background: #ffffff; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
+        
+        .error-message { color: var(--error); font-size: 0.85rem; font-weight: 600; margin-bottom: 15px; text-align: center; min-height: 20px; display: none; background: #fef2f2; padding: 10px; border-radius: 6px; border: 1px solid #fecaca; }
+
+        .btn-login { background: var(--primary); color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-login:hover { background: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 4px 6px rgba(79, 70, 229, 0.2); }
+    </style>
+</head>
+<body>
+
+    <div class="login-card">
+        <h2>Secure Exam Portal</h2>
+        <p>Enter your details to access your assigned test.</p>
+
+        <div class="error-message" id="errorMsg"></div>
+
+        <div class="form-group">
+            <label for="studentName">Registered Full Name</label>
+            <input type="text" id="studentName" placeholder="e.g. Rahul Kumar" autocomplete="off">
+        </div>
+
+        <div class="form-group">
+            <label for="examCode">Exam Code (File Name)</label>
+            <input type="text" id="examCode" placeholder="e.g. jee-mock-test" autocomplete="off">
+        </div>
+
+        <button class="btn-login" onclick="attemptLogin()">Start Exam</button>
+    </div>
+
+    <script>
+        // =====================================================================
+        // 📋 EXCEL / NOTEPAD DATABASE
+        // Paste your student names between the backticks ( ` ) below.
+        // Put each name on a new line. The system will automatically read it.
+        // =====================================================================
+        
+        const rawDatabase = `
+Rahul Kumar
+Aditi Sharma
+John Doe
+Jane Smith
+Arjun Patel
+Test Student
+        `;
+
+        // =====================================================================
+        // END OF DATABASE
+        // =====================================================================
+
+        // 1. Process the raw text into a clean list of names (ignores empty lines and extra spaces)
+        const allowedStudents = rawDatabase.split('\n')
+                                           .map(name => name.trim().toLowerCase())
+                                           .filter(name => name.length > 0);
+
+        function attemptLogin() {
+            const nameInput = document.getElementById('studentName').value.trim();
+            const codeInput = document.getElementById('examCode').value.trim();
+            const errorBox = document.getElementById('errorMsg');
+
+            // Reset error
+            errorBox.style.display = 'none';
+            errorBox.innerText = '';
+
+            // Validation 1: Empty Fields
+            if (!nameInput || !codeInput) {
+                showError("Please enter both your Name and the Exam Code.");
+                return;
+            }
+
+            // Validation 2: Check Database (Notepad/Excel list)
+            const normalizedInputName = nameInput.toLowerCase();
+            if (!allowedStudents.includes(normalizedInputName)) {
+                showError("Access Denied: Name not found in the registered student list. Please check your spelling.");
+                return;
+            }
+
+            // Format the target file name
+            let targetFile = codeInput.toLowerCase();
+            if (!targetFile.endsWith('.html')) {
+                targetFile += '.html';
+            }
+
+            // Validation 3: Check One-Time Login Lock
+            // We create a unique lock key for this specific student and this specific exam
+            const lockKey = `locked_${targetFile}_${normalizedInputName}`;
+            
+            if (localStorage.getItem(lockKey) === "true") {
+                showError("You have already attempted this exam. Multiple attempts are not permitted.");
+                return;
+            }
+
+            // --- SUCCESS ROUTE ---
+
+            // 1. Save the name exactly as they typed it so the Scorecard can read it
+            localStorage.setItem('exam_student_name', nameInput);
+
+            // 2. Lock them out of taking this specific exam again
+            localStorage.setItem(lockKey, "true");
+
+            // 3. Redirect them to the exam file
+            window.location.href = targetFile;
+        }
+
+        function showError(msg) {
+            const errorBox = document.getElementById('errorMsg');
+            errorBox.innerText = msg;
+            errorBox.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
