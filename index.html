@@ -54,28 +54,17 @@
         <button class="btn-login" onclick="attemptLogin()">Start Exam</button>
     </div>
 
-    <script>
+   <script>
         // =====================================================================
         // 📋 EXCEL / NOTEPAD DATABASE
-        // Paste your student names between the backticks ( ` ) below.
-        // Put each name on a new line. The system will automatically read it.
         // =====================================================================
         
         const rawDatabase = `
 Rahul Kumar
 Aditi Sharma
 John Doe
-Jane Smith
-Arjun Patel
-Test Student
-kai
         `;
 
-        // =====================================================================
-        // END OF DATABASE
-        // =====================================================================
-
-        // 1. Process the raw text into a clean list of names (ignores empty lines and extra spaces)
         const allowedStudents = rawDatabase.split('\n')
                                            .map(name => name.trim().toLowerCase())
                                            .filter(name => name.length > 0);
@@ -85,47 +74,39 @@ kai
             const codeInput = document.getElementById('examCode').value.trim();
             const errorBox = document.getElementById('errorMsg');
 
-            // Reset error
             errorBox.style.display = 'none';
             errorBox.innerText = '';
 
-            // Validation 1: Empty Fields
             if (!nameInput || !codeInput) {
                 showError("Please enter both your Name and the Exam Code.");
                 return;
             }
 
-            // Validation 2: Check Database (Notepad/Excel list)
             const normalizedInputName = nameInput.toLowerCase();
-            if (!allowedStudents.includes(normalizedInputName)) {
-                showError("Access Denied: Name not found in the registered student list. Please check your spelling.");
+
+            // BYPASS 1: Allow "m" even if not in the database
+            if (!allowedStudents.includes(normalizedInputName) && normalizedInputName !== "m") {
+                showError("Access Denied: Name not found in the registered student list.");
                 return;
             }
 
-            // Format the target file name
             let targetFile = codeInput.toLowerCase();
             if (!targetFile.endsWith('.html')) {
                 targetFile += '.html';
             }
 
-            // Validation 3: Check One-Time Login Lock
-            // We create a unique lock key for this specific student and this specific exam
             const lockKey = `locked_${targetFile}_${normalizedInputName}`;
             
-            if (localStorage.getItem(lockKey) === "true") {
-                showError("You have already attempted this exam. Multiple attempts are not permitted.");
-                return;
+            // BYPASS 2: Skip the lock check and lock creation if the user is "m"
+            if (normalizedInputName !== "m") {
+                if (localStorage.getItem(lockKey) === "true") {
+                    showError("You have already attempted this exam. Multiple attempts are not permitted.");
+                    return;
+                }
+                localStorage.setItem(lockKey, "true");
             }
 
-            // --- SUCCESS ROUTE ---
-
-            // 1. Save the name exactly as they typed it so the Scorecard can read it
             localStorage.setItem('exam_student_name', nameInput);
-
-            // 2. Lock them out of taking this specific exam again
-            localStorage.setItem(lockKey, "true");
-
-            // 3. Redirect them to the exam file
             window.location.href = targetFile;
         }
 
