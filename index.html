@@ -3,68 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Exam Portal</title>
+    <title>Exam Login Portal</title>
     <style>
-        :root {
-            --bg-color: #f3f4f6;
-            --card-bg: #ffffff;
-            --primary: #4f46e5;
-            --primary-hover: #4338ca;
-            --text-main: #1f2937;
-            --text-muted: #6b7280;
-            --error: #ef4444;
-            --border: #e5e7eb;
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { 
+            background-color: #f4f7f6; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0; 
+            padding: 20px;
         }
-
-        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg-color); color: var(--text-main); margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        
-        .login-card { background: var(--card-bg); padding: 40px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 400px; border: 1px solid var(--border); }
-        .login-card h2 { margin-top: 0; color: var(--primary); font-size: 1.8rem; margin-bottom: 5px; text-align: center; }
-        .login-card p { text-align: center; color: var(--text-muted); margin-bottom: 30px; font-size: 0.95rem; }
-
-        .form-group { margin-bottom: 20px; }
-        label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 8px; color: var(--text-main); text-transform: uppercase; letter-spacing: 0.5px; }
-        input[type="text"] { width: 100%; padding: 12px 15px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; box-sizing: border-box; transition: 0.2s; background: #f9fafb; }
-        input[type="text"]:focus { outline: none; border-color: var(--primary); background: #ffffff; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
-        
-        .error-message { color: var(--error); font-size: 0.85rem; font-weight: 600; margin-bottom: 15px; text-align: center; min-height: 20px; display: none; background: #fef2f2; padding: 10px; border-radius: 6px; border: 1px solid #fecaca; }
-
-        .btn-login { background: var(--primary); color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        .btn-login:hover { background: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 4px 6px rgba(79, 70, 229, 0.2); }
+        .login-card { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+            width: 100%; 
+            max-width: 400px; 
+        }
+        h2 { text-align: center; color: #333; margin-top: 0; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; color: #666; font-weight: bold; }
+        input { 
+            width: 100%; 
+            padding: 10px; 
+            border: 1px solid #ccc; 
+            border-radius: 5px; 
+            font-size: 16px; 
+        }
+        button { 
+            width: 100%; 
+            padding: 12px; 
+            background-color: #0056b3; 
+            color: white; 
+            border: none; 
+            border-radius: 5px; 
+            font-size: 16px; 
+            cursor: pointer; 
+            font-weight: bold;
+        }
+        button:hover { background-color: #004494; }
+        .error { 
+            color: white; 
+            background-color: #e74c3c; 
+            padding: 10px; 
+            border-radius: 5px; 
+            margin-bottom: 20px; 
+            display: none; 
+            text-align: center; 
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
 
     <div class="login-card">
-        <h2>Secure Exam Portal</h2>
-        <p>Enter your details to access your assigned test.</p>
+        <h2>Student Exam Portal</h2>
+        
+        <div id="errorMsg" class="error"></div>
 
-        <div class="error-message" id="errorMsg"></div>
-
-        <div class="form-group">
-            <label for="studentName">Registered Full Name</label>
-            <input type="text" id="studentName" placeholder="e.g. Rahul Kumar" autocomplete="off">
+        <div class="input-group">
+            <label for="studentName">Full Name</label>
+            <input type="text" id="studentName" placeholder="Enter your registered name">
         </div>
 
-        <div class="form-group">
+        <div class="input-group">
             <label for="examCode">Exam Code (File Name)</label>
-            <input type="text" id="examCode" placeholder="e.g. jee-mock-test" autocomplete="off">
+            <input type="text" id="examCode" placeholder="e.g., jee-mock-test">
         </div>
 
-        <button class="btn-login" onclick="attemptLogin()">Start Exam</button>
+        <button onclick="attemptLogin()">Start Exam</button>
     </div>
 
-   <script>
+    <script>
         // =====================================================================
-        // 📋 EXCEL / NOTEPAD DATABASE
+        // 📋 EXCEL / NOTEPAD DATABASE (Add your students here)
         // =====================================================================
-        
         const rawDatabase = `
 Rahul Kumar
 Aditi Sharma
 John Doe
         `;
 
+        // Clean up the database into an array of lowercase names
         const allowedStudents = rawDatabase.split('\n')
                                            .map(name => name.trim().toLowerCase())
                                            .filter(name => name.length > 0);
@@ -74,6 +97,7 @@ John Doe
             const codeInput = document.getElementById('examCode').value.trim();
             const errorBox = document.getElementById('errorMsg');
 
+            // Reset error box
             errorBox.style.display = 'none';
             errorBox.innerText = '';
 
@@ -84,29 +108,40 @@ John Doe
 
             const normalizedInputName = nameInput.toLowerCase();
 
-            // BYPASS 1: Allow "m" even if not in the database
-            if (!allowedStudents.includes(normalizedInputName) && normalizedInputName !== "m") {
+            // ---------------------------------------------------------
+            // BYPASS LOGIC FOR TESTER "M"
+            // ---------------------------------------------------------
+            const isTester = (normalizedInputName === "m");
+
+            // 1. Check if name is in database (unless it's tester "M")
+            if (!isTester && !allowedStudents.includes(normalizedInputName)) {
                 showError("Access Denied: Name not found in the registered student list.");
                 return;
             }
 
+            // Ensure the target file has .html extension
             let targetFile = codeInput.toLowerCase();
             if (!targetFile.endsWith('.html')) {
                 targetFile += '.html';
             }
 
+            // 2. Check for One-Time Lock (unless it's tester "M")
             const lockKey = `locked_${targetFile}_${normalizedInputName}`;
             
-            // BYPASS 2: Skip the lock check and lock creation if the user is "m"
-            if (normalizedInputName !== "m") {
+            if (!isTester) {
+                // If not "M", check if they already took it
                 if (localStorage.getItem(lockKey) === "true") {
                     showError("You have already attempted this exam. Multiple attempts are not permitted.");
                     return;
                 }
+                // If not "M" and hasn't taken it, lock it now
                 localStorage.setItem(lockKey, "true");
             }
 
+            // Save the name for the Scorecard to read
             localStorage.setItem('exam_student_name', nameInput);
+            
+            // Redirect to the exam file
             window.location.href = targetFile;
         }
 
