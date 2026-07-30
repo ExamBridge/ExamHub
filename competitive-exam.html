@@ -140,7 +140,7 @@
             border: none;
             border-radius: 50px;
             padding: 16px 32px;
-            width: 100%;
+            width: 100%; 
             max-width: 400px;
             font-family: 'Quicksand', sans-serif;
             font-weight: 800;
@@ -172,11 +172,11 @@
     </main>
 
     <div class="bottom-bar">
-        <button class="action-btn" onclick="attemptLogin()">Start Exam</button>
+        <button id="loginBtn" class="action-btn" onclick="attemptLogin()">Start Exam</button>
     </div>
 
     <script>
-        // === PREVENT BROWSER / DEVICE BACK BUTTON ===
+        // === PREVENT BROWSER / DEVICE BACK BUTTON ON LOGIN SCREEN ===
         window.history.pushState(null, null, window.location.href);
         window.onpopstate = function () {
             window.history.pushState(null, null, window.location.href);
@@ -200,6 +200,7 @@ John Doe
             const nameInput = document.getElementById('studentName').value.trim();
             const codeInput = document.getElementById('examCode').value.trim();
             const errorBox = document.getElementById('errorMsg');
+            const btn = document.getElementById('loginBtn');
 
             // Reset error box
             errorBox.style.display = 'none';
@@ -229,41 +230,56 @@ John Doe
                 targetFile += '.html';
             }
 
-            // 2. Check for One-Time Lock (unless it's tester "M")
-            const lockKey = `locked_${targetFile}_${normalizedInputName}`;
-            
-            if (!isTester) {
-                // If not "M", check if they already took it
-                if (localStorage.getItem(lockKey) === "true") {
-                    showError("You have already attempted this exam. Multiple attempts are not permitted.");
+            // ---------------------------------------------------------
+            // NEW: STRICT FILE EXISTENCE VERIFICATION
+            // ---------------------------------------------------------
+            btn.innerText = "Verifying...";
+            btn.style.opacity = "0.7";
+            btn.disabled = true;
+
+            try {
+                // Fetch the file. In Android WebView, local files often return status 0 instead of 200.
+                const response = await fetch(targetFile);
+                
+                if (!response.ok && response.status !== 0) {
+                    resetButton(btn);
+                    showError("Invalid Exam Code: The exam file could not be found.");
                     return;
                 }
-            }
 
-            // 3. Verify if the Exam Code (file) actually exists
-            try {
-                // Attempt to fetch the file to see if it throws a 404 Error
-                const response = await fetch(targetFile, { method: 'HEAD' }).catch(() => fetch(targetFile));
-                
-                if (!response.ok) {
+                // Verify the file isn't completely empty (WebView sometimes masks 404s with empty 0-status files)
+                const content = await response.text();
+                if (content.trim().length === 0) {
+                    resetButton(btn);
                     showError("Invalid Exam Code: The exam file could not be found.");
                     return;
                 }
             } catch (error) {
-                // If the fetch fails entirely due to local Android WebView file restrictions, it logs it and proceeds
-                console.warn("Could not verify file via fetch, attempting blind redirect.");
+                // A TypeError on fetch usually means the local file doesn't exist
+                resetButton(btn);
+                showError("Invalid Exam Code: The exam file could not be found.");
+                return;
             }
 
-            // 4. If all checks pass, lock the exam and proceed
+            // 2. Check for One-Time Lock (unless it's tester "M")
+            const lockKey = `locked_${targetFile}_${normalizedInputName}`;
+            
             if (!isTester) {
+                if (localStorage.getItem(lockKey) === "true") {
+                    resetButton(btn);
+                    showError("You have already attempted this exam. Multiple attempts are not permitted.");
+                    return;
+                }
+                // Lock it now
                 localStorage.setItem(lockKey, "true");
             }
 
             // Save the name for the Scorecard to read
             localStorage.setItem('exam_student_name', nameInput);
             
-            // Redirect using replace() so the login screen is removed from the history.
-            // This prevents the user from going back to the login screen.
+            // 3. REDIRECT WITH HISTORY OVERRIDE
+            // Using location.replace() deletes the login screen from history. 
+            // The user cannot use the back button to get back here.
             window.location.replace(targetFile);
         }
 
@@ -271,6 +287,12 @@ John Doe
             const errorBox = document.getElementById('errorMsg');
             errorBox.innerText = msg;
             errorBox.style.display = 'block';
+        }
+
+        function resetButton(btn) {
+            btn.innerText = "Start Exam";
+            btn.style.opacity = "1";
+            btn.disabled = false;
         }
     </script>
 </body>
