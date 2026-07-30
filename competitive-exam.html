@@ -2,65 +2,161 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Exam Login Portal</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700;800&display=swap" rel="stylesheet">
+    
     <style>
-        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { 
-            background-color: #f4f7f6; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            height: 100vh; 
-            margin: 0; 
-            padding: 20px;
+        :root {
+            --primary-gradient: linear-gradient(135deg, #FF6473 0%, #FFA86A 100%);
+            --text-dark: #3A3A3A;
+            --text-gray: #8F92A1;
+            --bg-light: #F8F9FA;
+            --coral-text: #FF7468;
         }
-        .login-card { 
-            background: white; 
-            padding: 30px; 
-            border-radius: 10px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
-            width: 100%; 
-            max-width: 400px; 
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
         }
-        h2 { text-align: center; color: #333; margin-top: 0; }
-        .input-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 5px; color: #666; font-weight: bold; }
-        input { 
-            width: 100%; 
-            padding: 10px; 
-            border: 1px solid #ccc; 
-            border-radius: 5px; 
-            font-size: 16px; 
+
+        body {
+            font-family: 'Quicksand', sans-serif;
+            background-color: #FFFFFF;
+            color: var(--text-dark);
+            overflow-x: hidden;
+            position: relative;
+            min-height: 100vh;
+            padding-bottom: 90px;
+            display: flex;
+            flex-direction: column;
         }
-        button { 
-            width: 100%; 
-            padding: 12px; 
-            background-color: #0056b3; 
-            color: white; 
-            border: none; 
-            border-radius: 5px; 
-            font-size: 16px; 
-            cursor: pointer; 
-            font-weight: bold;
+
+        .bg-blob {
+            position: absolute;
+            top: -50px;
+            right: -50px;
+            width: 300px;
+            height: 300px;
+            background: var(--primary-gradient);
+            border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+            opacity: 0.15;
+            z-index: -1;
+            transform: rotate(-15deg);
         }
-        button:hover { background-color: #004494; }
-        .error { 
-            color: white; 
-            background-color: #e74c3c; 
-            padding: 10px; 
-            border-radius: 5px; 
-            margin-bottom: 20px; 
-            display: none; 
-            text-align: center; 
+
+        main {
+            padding: 40px 24px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .exam-title {
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--text-dark);
+            margin-bottom: 12px;
+        }
+
+        .description {
+            font-size: 15px;
+            line-height: 1.6;
+            color: var(--text-gray);
+            font-weight: 500;
+            margin-bottom: 40px;
+        }
+
+        .input-group {
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--coral-text);
+            font-weight: 800;
+            font-size: 15px;
+        }
+
+        input {
+            width: 100%;
+            padding: 18px;
+            border: 2px solid #EEEEEE;
+            border-radius: 16px;
+            background-color: var(--bg-light);
+            font-family: 'Quicksand', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-dark);
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            border-color: var(--coral-text);
+        }
+
+        input::placeholder {
+            color: #B0B3C6;
+            font-weight: 500;
+        }
+
+        .error {
+            background-color: #FFF0F0;
+            color: #FF4D4D;
+            padding: 16px;
+            border-radius: 16px;
+            margin-bottom: 24px;
+            font-weight: 700;
             font-size: 14px;
+            display: none;
+            border: 1px solid #FFD6D6;
+            text-align: center;
+        }
+
+        .bottom-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: var(--primary-gradient);
+            padding: 20px 24px;
+            display: flex;
+            justify-content: center; /* Centered the button for mobile */
+            align-items: center;
+            border-top-left-radius: 24px;
+            border-top-right-radius: 24px;
+            box-shadow: 0 -4px 15px rgba(255, 116, 104, 0.3);
+        }
+
+        .action-btn {
+            background-color: #FFFFFF;
+            color: var(--coral-text);
+            border: none;
+            border-radius: 50px;
+            padding: 16px 32px;
+            width: 100%; /* Full width for easy tapping on mobile */
+            max-width: 400px;
+            font-family: 'Quicksand', sans-serif;
+            font-weight: 800;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
         }
     </style>
 </head>
 <body>
 
-    <div class="login-card">
-        <h2>Student Exam Portal</h2>
+    <div class="bg-blob"></div>
+
+    <main>
+        <h1 class="exam-title">Student Exam Portal</h1>
+        <p class="description">Enter your registered details to access your exam module. Your session is securely monitored.</p>
         
         <div id="errorMsg" class="error"></div>
 
@@ -73,10 +169,13 @@
             <label for="examCode">Exam Code (File Name)</label>
             <input type="text" id="examCode" placeholder="e.g., jee-mock-test">
         </div>
+    </main>
 
-        <button onclick="attemptLogin()">Start Exam</button>
+    <div class="bottom-bar">
+        <button class="action-btn" onclick="attemptLogin()">Start Exam</button>
     </div>
 
+    <!-- YOUR EXACT UNMODIFIED JAVASCRIPT LOGIC BELOW -->
     <script>
         // =====================================================================
         // 📋 EXCEL / NOTEPAD DATABASE (Add your students here)
