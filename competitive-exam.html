@@ -127,7 +127,7 @@
             background: var(--primary-gradient);
             padding: 20px 24px;
             display: flex;
-            justify-content: center; /* Centered the button for mobile */
+            justify-content: center;
             align-items: center;
             border-top-left-radius: 24px;
             border-top-right-radius: 24px;
@@ -140,7 +140,7 @@
             border: none;
             border-radius: 50px;
             padding: 16px 32px;
-            width: 100%; /* Full width for easy tapping on mobile */
+            width: 100%;
             max-width: 400px;
             font-family: 'Quicksand', sans-serif;
             font-weight: 800;
@@ -175,8 +175,13 @@
         <button class="action-btn" onclick="attemptLogin()">Start Exam</button>
     </div>
 
-    <!-- YOUR EXACT UNMODIFIED JAVASCRIPT LOGIC BELOW -->
     <script>
+        // === PREVENT BROWSER / DEVICE BACK BUTTON ===
+        window.history.pushState(null, null, window.location.href);
+        window.onpopstate = function () {
+            window.history.pushState(null, null, window.location.href);
+        };
+
         // =====================================================================
         // 📋 EXCEL / NOTEPAD DATABASE (Add your students here)
         // =====================================================================
@@ -191,7 +196,7 @@ John Doe
                                            .map(name => name.trim().toLowerCase())
                                            .filter(name => name.length > 0);
 
-        function attemptLogin() {
+        async function attemptLogin() {
             const nameInput = document.getElementById('studentName').value.trim();
             const codeInput = document.getElementById('examCode').value.trim();
             const errorBox = document.getElementById('errorMsg');
@@ -233,15 +238,33 @@ John Doe
                     showError("You have already attempted this exam. Multiple attempts are not permitted.");
                     return;
                 }
-                // If not "M" and hasn't taken it, lock it now
+            }
+
+            // 3. Verify if the Exam Code (file) actually exists
+            try {
+                // Attempt to fetch the file to see if it throws a 404 Error
+                const response = await fetch(targetFile, { method: 'HEAD' }).catch(() => fetch(targetFile));
+                
+                if (!response.ok) {
+                    showError("Invalid Exam Code: The exam file could not be found.");
+                    return;
+                }
+            } catch (error) {
+                // If the fetch fails entirely due to local Android WebView file restrictions, it logs it and proceeds
+                console.warn("Could not verify file via fetch, attempting blind redirect.");
+            }
+
+            // 4. If all checks pass, lock the exam and proceed
+            if (!isTester) {
                 localStorage.setItem(lockKey, "true");
             }
 
             // Save the name for the Scorecard to read
             localStorage.setItem('exam_student_name', nameInput);
             
-            // Redirect to the exam file
-            window.location.href = targetFile;
+            // Redirect using replace() so the login screen is removed from the history.
+            // This prevents the user from going back to the login screen.
+            window.location.replace(targetFile);
         }
 
         function showError(msg) {
