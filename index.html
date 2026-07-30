@@ -3,153 +3,195 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Exam Login Portal</title>
+    <title>Ananthu's Classes</title>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { 
-            background-color: #f4f7f6; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            height: 100vh; 
-            margin: 0; 
-            padding: 20px;
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Nunito', sans-serif;
         }
-        .login-card { 
-            background: white; 
-            padding: 30px; 
-            border-radius: 10px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
-            width: 100%; 
-            max-width: 400px; 
+
+        body {
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
         }
-        h2 { text-align: center; color: #333; margin-top: 0; }
-        .input-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 5px; color: #666; font-weight: bold; }
-        input { 
-            width: 100%; 
-            padding: 10px; 
-            border: 1px solid #ccc; 
-            border-radius: 5px; 
-            font-size: 16px; 
+
+        /* Mobile Container Wrapper */
+        .mobile-container {
+            width: 100%;
+            max-width: 414px; /* iPhone Pro Max width */
+            background-color: #ffffff;
+            min-height: 100vh;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column; /* Allows main content to stretch */
         }
-        button { 
-            width: 100%; 
-            padding: 12px; 
-            background-color: #0056b3; 
-            color: white; 
-            border: none; 
-            border-radius: 5px; 
-            font-size: 16px; 
-            cursor: pointer; 
-            font-weight: bold;
+
+        /* Background Pattern Decoration (Top Right) */
+        .mobile-container::before {
+            content: '';
+            position: absolute;
+            top: -50px;
+            right: -50px;
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(239,235,255,1) 0%, rgba(255,255,255,0) 70%);
+            z-index: 1;
         }
-        button:hover { background-color: #004494; }
-        .error { 
-            color: white; 
-            background-color: #e74c3c; 
-            padding: 10px; 
-            border-radius: 5px; 
-            margin-bottom: 20px; 
-            display: none; 
-            text-align: center; 
+
+        /* Header Layout - Centered since buttons are removed */
+        header {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 30px 20px 20px 20px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .logo {
+            font-size: 22px;
+            font-weight: 800;
+            color: #652d90;
+            letter-spacing: 0.5px;
+            text-align: center;
+        }
+
+        /* Grid Layout - Adjusted to fill the page */
+        .grid-container {
+            flex-grow: 1; /* Takes up all remaining vertical space */
+            display: grid;
+            grid-template-columns: repeat(2, 1fr); /* 2 columns for 6 items fits mobile perfectly */
+            align-content: space-evenly; /* Distributes the rows evenly across the height */
+            padding: 20px 30px 40px 30px;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* Anchor tags reset so they act like clean blocks */
+        a.grid-item {
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        a.grid-item:hover, a.grid-item:active {
+            transform: translateY(-5px);
+        }
+
+        /* Icon Circles Styling - Slightly larger to fill space */
+        .icon-circle {
+            width: 85px;
+            height: 85px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 36px;
+            margin-bottom: 15px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .item-text {
             font-size: 14px;
+            color: #4a4a4a;
+            font-weight: 800;
+            line-height: 1.3;
+        }
+
+        /* Specific Gradient Colors for each Subject */
+        .math { background: linear-gradient(135deg, #FFC107, #FF9800); box-shadow: 0 6px 15px rgba(255, 152, 0, 0.3); }
+        .physics { background: linear-gradient(135deg, #ff7e5f, #feb47b); box-shadow: 0 6px 15px rgba(255, 126, 95, 0.3); }
+        .chemistry { background: linear-gradient(135deg, #00c6ff, #0072ff); box-shadow: 0 6px 15px rgba(0, 114, 255, 0.3); }
+        .biology { background: linear-gradient(135deg, #b4ec51, #429321); box-shadow: 0 6px 15px rgba(66, 147, 33, 0.3); }
+        .mocks { background: linear-gradient(135deg, #4facfe, #00f2fe); box-shadow: 0 6px 15px rgba(79, 172, 254, 0.3); }
+        .papers { background: linear-gradient(135deg, #f77062, #fe5196); box-shadow: 0 6px 15px rgba(254, 81, 150, 0.3); }
+
+        /* Desktop scaling adjustments */
+        @media (min-width: 415px) {
+            .mobile-container {
+                height: 850px;
+                min-height: auto;
+                border-radius: 30px;
+                margin: 20px 0;
+            }
         }
     </style>
 </head>
 <body>
 
-    <div class="login-card">
-        <h2>Student Exam Portal</h2>
-        
-        <div id="errorMsg" class="error"></div>
+    <div class="mobile-container">
+        <!-- Header Section (Buttons Removed) -->
+        <header>
+            <div class="logo">
+                ANANTHU'S CLASSES
+            </div>
+        </header>
 
-        <div class="input-group">
-            <label for="studentName">Full Name</label>
-            <input type="text" id="studentName" placeholder="Enter your registered name">
-        </div>
+        <!-- Subjects Grid Section (Now acting as links) -->
+        <main class="grid-container">
+            
+            <a href="mathematics.html" class="grid-item">
+                <div class="icon-circle math">
+                    <i class="fas fa-compass"></i>
+                </div>
+                <span class="item-text">Mathematics</span>
+            </a>
 
-        <div class="input-group">
-            <label for="examCode">Exam Code (File Name)</label>
-            <input type="text" id="examCode" placeholder="e.g., jee-mock-test">
-        </div>
+            <a href="physics.html" class="grid-item">
+                <div class="icon-circle physics">
+                    <i class="fas fa-magnet"></i>
+                </div>
+                <span class="item-text">Physics</span>
+            </a>
 
-        <button onclick="attemptLogin()">Start Exam</button>
+            <a href="chemistry.html" class="grid-item">
+                <div class="icon-circle chemistry">
+                    <i class="fas fa-flask"></i>
+                </div>
+                <span class="item-text">Chemistry</span>
+            </a>
+
+            <a href="biology.html" class="grid-item">
+                <div class="icon-circle biology">
+                    <i class="fas fa-microscope"></i>
+                </div>
+                <span class="item-text">Biology</span>
+            </a>
+
+            <a href="competitive-exam.html" class="grid-item">
+                <div class="icon-circle mocks">
+                    <i class="fas fa-lightbulb"></i>
+                </div>
+                <span class="item-text">Competitive<br>Exam</span>
+            </a>
+
+            <a href="previous-year-papers.html" class="grid-item">
+                <div class="icon-circle papers">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <span class="item-text">Previous<br>Year Papers</span>
+            </a>
+
+        </main>
     </div>
 
-    <script>
-        // =====================================================================
-        // 📋 EXCEL / NOTEPAD DATABASE (Add your students here)
-        // =====================================================================
-        const rawDatabase = `
-Rahul Kumar
-Aditi Sharma
-John Doe
-        `;
-
-        // Clean up the database into an array of lowercase names
-        const allowedStudents = rawDatabase.split('\n')
-                                           .map(name => name.trim().toLowerCase())
-                                           .filter(name => name.length > 0);
-
-        function attemptLogin() {
-            const nameInput = document.getElementById('studentName').value.trim();
-            const codeInput = document.getElementById('examCode').value.trim();
-            const errorBox = document.getElementById('errorMsg');
-
-            // Reset error box
-            errorBox.style.display = 'none';
-            errorBox.innerText = '';
-
-            if (!nameInput || !codeInput) {
-                showError("Please enter both your Name and the Exam Code.");
-                return;
-            }
-
-            const normalizedInputName = nameInput.toLowerCase();
-
-            // ---------------------------------------------------------
-            // BYPASS LOGIC FOR TESTER "M"
-            // ---------------------------------------------------------
-            const isTester = (normalizedInputName === "m");
-
-            // 1. Check if name is in database (unless it's tester "M")
-            if (!isTester && !allowedStudents.includes(normalizedInputName)) {
-                showError("Access Denied: Name not found in the registered student list.");
-                return;
-            }
-
-            // Ensure the target file has .html extension
-            let targetFile = codeInput.toLowerCase();
-            if (!targetFile.endsWith('.html')) {
-                targetFile += '.html';
-            }
-
-            // 2. Check for One-Time Lock (unless it's tester "M")
-            const lockKey = `locked_${targetFile}_${normalizedInputName}`;
-            
-            if (!isTester) {
-                // If not "M", check if they already took it
-                if (localStorage.getItem(lockKey) === "true") {
-                    showError("You have already attempted this exam. Multiple attempts are not permitted.");
-                    return;
-                }
-                // If not "M" and hasn't taken it, lock it now
-                localStorage.setItem(lockKey, "true");
-            }
-
-            // Save the name for the Scorecard to read
-            localStorage.setItem('exam_student_name', nameInput);
-            
-            // Redirect to the exam file
-            window.location.href = targetFile;
-        }
-
-        function showError(msg) {
-            const errorBox = document.getElementById('errorMsg');
-            errorBox.innerText = msg;
-            errorBox.style.display = 'block';
-        }
-    </script>
 </body>
 </html>
