@@ -3,161 +3,181 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Coming Soon</title>
-    <!-- FontAwesome for Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <title>Physics Learning Dashboard</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap');
+        :root {
+            --bg-color: #f4f7f6;
+            --text-light: #ffffff;
+        }
 
         * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
-            font-family: 'Nunito', sans-serif;
-        }
-
-        body {
-            background-color: #f4f4f9;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
-
-        /* Mobile Container Wrapper */
-        .mobile-container {
-            width: 100%;
-            max-width: 414px; 
-            background-color: #ffffff;
-            min-height: 100vh;
-            position: relative;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* Soft Orange/Peach Background Pattern Decoration (Top Right) */
-        .mobile-container::before {
-            content: '';
-            position: absolute;
-            top: -100px;
-            right: -80px;
-            width: 350px;
-            height: 350px;
-            background: radial-gradient(circle, rgba(255, 230, 218, 1) 0%, rgba(255, 255, 255, 0) 60%);
-            z-index: 1;
-        }
-
-        /* Top Header Area for Back Button */
-        header {
-            display: flex;
-            justify-content: flex-start;
-            padding: 25px 20px;
-            position: relative;
-            z-index: 2;
-        }
-
-        /* Styled Back Button matching the reference image */
-        .back-btn {
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
-            background-color: #ffffff;
-            color: #ff7854; /* Orange accent */
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 18px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-            text-decoration: none;
-            cursor: pointer;
-            transition: transform 0.2s ease;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             -webkit-tap-highlight-color: transparent;
         }
 
-        .back-btn:hover, .back-btn:active {
-            transform: scale(0.95);
-        }
-
-        /* Center Content Area */
-        .content-area {
-            flex-grow: 1;
+        body {
+            background-color: var(--bg-color);
+            padding: 20px 15px;
             display: flex;
-            flex-direction: column;
             justify-content: center;
-            align-items: center;
-            position: relative;
-            z-index: 2;
-            padding-bottom: 100px; /* Offset to visually center it above the fold */
         }
 
-        /* Icon Styling */
-        .coming-soon-icon {
-            font-size: 60px;
-            background: linear-gradient(135deg, #ff5e62, #ff9966);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 20px;
-            animation: float 3s ease-in-out infinite;
+        .dashboard-container {
+            width: 100%;
+            max-width: 600px; /* Adjusted for wider rectangular buttons */
         }
 
-        /* Gradient Text Styling */
-        .coming-soon-text {
-            font-size: 28px;
-            font-weight: 800;
-            background: linear-gradient(90deg, #ff5e62, #ff9966); /* Pinkish-red to Orange */
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            letter-spacing: 0.5px;
+        .section-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: #333;
+            margin: 25px 0 15px 5px;
         }
 
-        .sub-text {
-            color: #888;
-            font-size: 14px;
-            font-weight: 600;
-            margin-top: 10px;
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* 2 columns on larger screens */
+            gap: 15px;
         }
 
-        /* Floating animation for the icon */
-        @keyframes float {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-            100% { transform: translateY(0px); }
-        }
-
-        /* Desktop scaling adjustments */
-        @media (min-width: 415px) {
-            .mobile-container {
-                height: 850px;
-                min-height: auto;
-                border-radius: 30px;
-                margin: 20px 0;
+        /* Responsive: 1 column for mobile to fit rectangular buttons nicely */
+        @media (max-width: 600px) {
+            .grid-container {
+                grid-template-columns: 1fr;
             }
         }
+
+        .card {
+            border-radius: 12px;
+            padding: 20px 15px;
+            min-height: 90px; /* Creates the rectangular shape */
+            display: flex;
+            align-items: center; /* Centers vertically */
+            justify-content: center; /* Centers horizontally */
+            position: relative;
+            overflow: hidden;
+            color: var(--text-light);
+            cursor: pointer;
+            transition: transform 0.1s ease, box-shadow 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        .card:active {
+            transform: scale(0.97);
+        }
+
+        /* Large faded background icon for aesthetics */
+        .card::after {
+            content: "📚";
+            position: absolute;
+            font-size: 60px;
+            bottom: -10px;
+            right: 10px;
+            opacity: 0.1;
+            transform: rotate(-15deg);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* Centered Title */
+        .card-title {
+            font-size: 18px; /* Made slightly bigger */
+            font-weight: 700;
+            line-height: 1.3;
+            text-align: center;
+            z-index: 1;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
     </style>
 </head>
 <body>
 
-    <div class="mobile-container">
-        
-        <!-- Header with Back Button (Navigates to specified URL) -->
-        <header>
-            <a href="https://exambridge.github.io/ExamHub/" class="back-btn" aria-label="Go Back">
-                <i class="fas fa-arrow-left"></i>
-            </a>
-        </header>
-
-        <!-- Centered Coming Soon Content -->
-        <main class="content-area">
-            <div class="coming-soon-icon">
-                <i class="fas fa-hourglass-half"></i>
-            </div>
-            <h1 class="coming-soon-text">Coming soon...</h1>
-            <p class="sub-text">We are working on this section.</p>
-        </main>
-
+    <div class="dashboard-container" id="app">
+        <!-- Content will be injected by JavaScript -->
     </div>
 
+    <script>
+        // Chapter Data
+        const class11Chapters = [
+            "Units and Measurements", "Motion in a Straight Line", "Motion in a Plane", 
+            "Laws of Motion", "Work, Energy and Power", "System of Particles and Rotational Motion", 
+            "Gravitation", "Mechanical Properties of Solids", "Mechanical Properties of Fluids", 
+            "Thermal Properties of Matter", "Thermodynamics", "Kinetic Theory", 
+            "Oscillations", "Waves"
+        ];
+
+        const class12Chapters = [
+            "Electric Charges and Fields", "Electrostatic Potential and Capacitance", 
+            "Current Electricity", "Moving Charges and Magnetism", "Magnetism and Matter", 
+            "Electromagnetic Induction", "Alternating Current", "Electromagnetic Waves", 
+            "Ray Optics and Optical Instruments", "Wave Optics", "Dual Nature of Radiation and Matter", 
+            "Atoms", "Nuclei", "Semiconductor Electronics"
+        ];
+
+        // Vibrant gradient palettes
+        const palettes = [
+            "linear-gradient(135deg, #1e5799, #2989d8)", // Blue
+            "linear-gradient(135deg, #11998e, #38ef7d)", // Green
+            "linear-gradient(135deg, #d35400, #f39c12)", // Orange
+            "linear-gradient(135deg, #8e44ad, #9b59b6)", // Purple
+            "linear-gradient(135deg, #c0392b, #e74c3c)", // Red
+            "linear-gradient(135deg, #16a085, #1abc9c)"  // Teal
+        ];
+
+        function createGrid(chapters, titleText) {
+            const container = document.createElement('div');
+            
+            const title = document.createElement('h2');
+            title.className = 'section-title';
+            title.innerText = titleText;
+            container.appendChild(title);
+
+            const grid = document.createElement('div');
+            grid.className = 'grid-container';
+
+            chapters.forEach((chapter, index) => {
+                const bgGradient = palettes[index % palettes.length];
+
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.style.background = bgGradient;
+                card.dataset.chapter = chapter;
+
+                card.innerHTML = `
+                    <div class="card-title">${chapter}</div>
+                `;
+
+                // Handle click event to open new page
+                card.addEventListener('click', function() {
+                    setTimeout(() => {
+                        // 1. Get the name of the chapter that was clicked
+                        let chapterName = this.dataset.chapter;
+
+                        // 2. Convert the chapter name into a standard HTML filename
+                        // Example: "Units and Measurements" becomes "units_and_measurements.html"
+                        let fileName = chapterName.toLowerCase().replace(/,/g, "").replace(/ /g, "_") + ".html";
+
+                        // 3. Navigate to that HTML file
+                        window.location.href = fileName;
+                        
+                    }, 150); // 150ms delay lets the click animation finish first
+                });
+
+                grid.appendChild(card);
+            });
+
+            container.appendChild(grid);
+            return container;
+        }
+
+        const app = document.getElementById('app');
+        app.appendChild(createGrid(class11Chapters, "Class 11 Physics"));
+        app.appendChild(createGrid(class12Chapters, "Class 12 Physics"));
+
+    </script>
 </body>
 </html>
