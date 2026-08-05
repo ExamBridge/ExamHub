@@ -11,9 +11,11 @@
 <style>
     html, body { max-width: 100vw !important; overflow-x: hidden !important; }
     * { box-sizing: border-box !important; }
-    .question-text, .option, .explanation-box, p, div, span {
-        word-wrap: break-word !important; overflow-wrap: break-word !important; word-break: break-word !important; white-space: pre-wrap !important; max-width: 100% !important; min-width: 0 !important;
+    
+    .question-text, .explanation-box, p {
+        overflow-wrap: break-word; word-break: break-word; max-width: 100% !important;
     }
+    
     img, table { max-width: 100% !important; height: auto !important; }
     :root {
         --bg-color: #f0f2f5; --card-bg: #ffffff; --card-border: 1px solid #e1e4e8; --card-shadow: 0 10px 25px rgba(0,0,0,0.05);
@@ -33,7 +35,14 @@
     .question-img { max-width: 100%; max-height: 400px; border-radius: 12px; margin-bottom: 25px; border: var(--card-border); display: block; margin-left: auto; margin-right: auto; }
     .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
     @media (max-width: 600px) { .options-grid { grid-template-columns: 1fr; } }
-    .option { background: var(--btn-bg); border: var(--btn-border); box-shadow: var(--btn-shadow); color: var(--text-main); padding: 18px 20px; border-radius: 12px; cursor: pointer; transition: all 0.2s; font-size: 1.1rem; text-align: center; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+    
+    .option { 
+        background: var(--btn-bg); border: var(--btn-border); box-shadow: var(--btn-shadow); color: var(--text-main); 
+        padding: 18px 20px; border-radius: 12px; cursor: pointer; transition: all 0.2s; font-size: 1.1rem; 
+        text-align: center; font-weight: 600; 
+        display: block; overflow-x: auto; overflow-y: hidden; min-height: 60px;
+    }
+    
     .option:hover { border-color: var(--primary); background: var(--btn-hover-bg); transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
     .option.correct { background: rgba(16, 185, 129, 0.1); color: var(--correct); border-color: var(--correct); pointer-events: none; transform: none; box-shadow: none; }
     .option.wrong { background: rgba(239, 68, 68, 0.1); color: var(--wrong); border-color: var(--wrong); pointer-events: none; transform: none; box-shadow: none; }
@@ -71,7 +80,7 @@
         console.log("Offline mode: Back-button block bypassed.");
     }
 
-    const CONFIG = {"theme":"flat","timerType":"question","timerValue":60,"shuffle":false,"exitUrl":"https://exambridge.github.io/ExamHub/"};
+    const CONFIG = {"theme":"flat","timerType":"question","timerValue":15,"shuffle":false,"exitUrl":"https://exambridge.github.io/ExamHub/"};
     
     const quizData = [
         {"id": 1, "qNum": 1, "qText": "Which of the following systems of units is not based on units of mass, length and time alone?", "qImage": null, "options": ["(a) SI", "(b) MKS", "(c) CGS", "(d) FPS"], "correct": "(a) SI", "expText": "", "expImage": null},
