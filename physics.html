@@ -27,7 +27,7 @@
 
         .dashboard-container {
             width: 100%;
-            max-width: 600px; /* Adjusted for wider rectangular buttons */
+            max-width: 600px;
         }
 
         .section-title {
@@ -39,11 +39,10 @@
 
         .grid-container {
             display: grid;
-            grid-template-columns: 1fr 1fr; /* 2 columns on larger screens */
+            grid-template-columns: 1fr 1fr;
             gap: 15px;
         }
 
-        /* Responsive: 1 column for mobile to fit rectangular buttons nicely */
         @media (max-width: 600px) {
             .grid-container {
                 grid-template-columns: 1fr;
@@ -53,10 +52,10 @@
         .card {
             border-radius: 12px;
             padding: 20px 15px;
-            min-height: 90px; /* Creates the rectangular shape */
+            min-height: 90px;
             display: flex;
-            align-items: center; /* Centers vertically */
-            justify-content: center; /* Centers horizontally */
+            align-items: center;
+            justify-content: center;
             position: relative;
             overflow: hidden;
             color: var(--text-light);
@@ -69,7 +68,6 @@
             transform: scale(0.97);
         }
 
-        /* Large faded background icon for aesthetics */
         .card::after {
             content: "📚";
             position: absolute;
@@ -82,16 +80,14 @@
             pointer-events: none;
         }
 
-        /* Centered Title */
         .card-title {
-            font-size: 18px; /* Made slightly bigger */
+            font-size: 18px;
             font-weight: 700;
             line-height: 1.3;
             text-align: center;
             z-index: 1;
             text-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-
     </style>
 </head>
 <body>
@@ -101,7 +97,6 @@
     </div>
 
     <script>
-        // Chapter Data
         const class11Chapters = [
             "Units and Measurements", "Motion in a Straight Line", "Motion in a Plane", 
             "Laws of Motion", "Work, Energy and Power", "System of Particles and Rotational Motion", 
@@ -118,14 +113,13 @@
             "Atoms", "Nuclei", "Semiconductor Electronics"
         ];
 
-        // Vibrant gradient palettes
         const palettes = [
-            "linear-gradient(135deg, #1e5799, #2989d8)", // Blue
-            "linear-gradient(135deg, #11998e, #38ef7d)", // Green
-            "linear-gradient(135deg, #d35400, #f39c12)", // Orange
-            "linear-gradient(135deg, #8e44ad, #9b59b6)", // Purple
-            "linear-gradient(135deg, #c0392b, #e74c3c)", // Red
-            "linear-gradient(135deg, #16a085, #1abc9c)"  // Teal
+            "linear-gradient(135deg, #1e5799, #2989d8)", 
+            "linear-gradient(135deg, #11998e, #38ef7d)", 
+            "linear-gradient(135deg, #d35400, #f39c12)", 
+            "linear-gradient(135deg, #8e44ad, #9b59b6)", 
+            "linear-gradient(135deg, #c0392b, #e74c3c)", 
+            "linear-gradient(135deg, #16a085, #1abc9c)"  
         ];
 
         function createGrid(chapters, titleText) {
@@ -151,20 +145,16 @@
                     <div class="card-title">${chapter}</div>
                 `;
 
-                // Handle click event to open new page
                 card.addEventListener('click', function() {
                     setTimeout(() => {
-                        // 1. Get the name of the chapter that was clicked
                         let chapterName = this.dataset.chapter;
 
-                        // 2. Convert the chapter name into a standard HTML filename
-                        // Example: "Units and Measurements" becomes "thedandfblockelements.html"
+                        // OPTION 1 APPLIED: Removes all spaces and special characters, leaving a single lowercase string
                         let fileName = chapterName.toLowerCase().replace(/[^a-z0-9]/g, "") + ".html";
 
-                        // 3. Navigate to that HTML file
                         window.location.href = fileName;
                         
-                    }, 150); // 150ms delay lets the click animation finish first
+                    }, 150); 
                 });
 
                 grid.appendChild(card);
