@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coming Soon...</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body, html {
+            height: 100%;
+            background-color: #ffffff;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .bg-gradient {
+            position: absolute;
+            top: -50px;
+            right: -50px;
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(255, 230, 220, 0.6) 0%, rgba(255, 255, 255, 0) 70%);
+            z-index: 1;
+        }
+
+        .back-btn {
+            position: absolute;
+            top: 25px;
+            left: 20px;
+            width: 45px;
+            height: 45px;
+            background: #ffffff;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+            cursor: pointer;
+            text-decoration: none;
+            z-index: 10;
+            transition: transform 0.2s ease;
+        }
+
+        .back-btn:active {
+            transform: scale(0.95);
+        }
+
+        .back-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: #ff6b52;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            position: relative;
+            z-index: 2;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .icon-box {
+            margin-bottom: 25px;
+        }
+
+        .title {
+            font-size: 26px;
+            font-weight: 700;
+            color: #ff6b52;
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .subtitle {
+            font-size: 15px;
+            color: #7f8c8d;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="bg-gradient"></div>
+    
+    <!-- Hardcoded link back to your physics dashboard -->
+    <a href="physics.html" class="back-btn">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M20 11H7.83L13.42 5.41L12 4L4 12L12 20L13.41 18.59L7.83 13H20V11Z"/>
+        </svg>
+    </a>
+
+    <div class="container">
+        <div class="icon-box">
+            <svg width="70" height="90" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 2C6 1.44772 6.44772 1 7 1H17C17.5523 1 18 1.44772 18 2V6.5C18 8.11596 17.1581 9.53931 15.8673 10.3204L13.5658 11.7118C13.2046 11.9303 13.2046 12.4485 13.5658 12.6671L15.8673 14.0584C17.1581 14.8395 18 16.2629 18 17.8788V22C18 22.5523 17.5523 23 17 23H7C6.44772 23 6 22.5523 6 22V17.8788C6 16.2629 6.84189 14.8395 8.13271 14.0584L10.4342 12.6671C10.7954 12.4485 10.7954 11.9303 10.4342 11.7118L8.13271 10.3204C6.84189 9.53931 6 8.11596 6 6.5V2Z" fill="#ff9a76" stroke="#ff6b52" stroke-width="2"/>
+                <path d="M6 3H18" stroke="#ff6b52" stroke-width="2" stroke-linecap="round"/>
+                <path d="M6 21H18" stroke="#ff6b52" stroke-width="2" stroke-linecap="round"/>
+                <path d="M8.5 17.5L15.5 17.5C15.5 19.5 14 21 12 21C10 21 8.5 19.5 8.5 17.5Z" fill="#ff6b52"/>
+            </svg>
+        </div>
+        <div class="title">Coming soon...</div>
+        <div class="subtitle">We are working on this section.</div>
+    </div>
+
+</body>
+</html>
