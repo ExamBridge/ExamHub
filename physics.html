@@ -113,6 +113,12 @@
             "Atoms", "Nuclei", "Semiconductor Electronics"
         ];
 
+        // Add exactly matched chapter names here when their HTML files are ready and uploaded
+        const readyChapters = [
+            "Units and Measurements",
+            "Motion in a Straight Line"
+        ];
+
         const palettes = [
             "linear-gradient(135deg, #1e5799, #2989d8)", 
             "linear-gradient(135deg, #11998e, #38ef7d)", 
@@ -149,10 +155,14 @@
                     setTimeout(() => {
                         let chapterName = this.dataset.chapter;
 
-                        // OPTION 1 APPLIED: Removes all spaces and special characters, leaving a single lowercase string
-                        let fileName = chapterName.toLowerCase().replace(/[^a-z0-9]/g, "") + ".html";
-
-                        window.location.href = fileName;
+                        if (readyChapters.includes(chapterName)) {
+                            // File is ready, construct filename and route
+                            let fileName = chapterName.toLowerCase().replace(/[^a-z0-9]/g, "") + ".html";
+                            window.location.href = fileName;
+                        } else {
+                            // File not ready, route to the template
+                            window.location.href = "coming_soon_template.html";
+                        }
                         
                     }, 150); 
                 });
