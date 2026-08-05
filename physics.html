@@ -158,8 +158,8 @@
                         let chapterName = this.dataset.chapter;
 
                         // 2. Convert the chapter name into a standard HTML filename
-                        // Example: "Units and Measurements" becomes "units_and_measurements.html"
-                        let fileName = chapterName.toLowerCase().replace(/,/g, "").replace(/ /g, "_") + ".html";
+                        // Example: "Units and Measurements" becomes "thedandfblockelements.html"
+                        let fileName = chapterName.toLowerCase().replace(/[^a-z0-9]/g, "") + ".html";
 
                         // 3. Navigate to that HTML file
                         window.location.href = fileName;
