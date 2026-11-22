@@ -105,7 +105,8 @@
           classes: [],
           chapters: [],
           exams: [],
-          results: []
+          results: [],
+          retakePermissions: {} // { "examId::normalizedStudentName": timestampMs }
         },
         syncStatus: "syncing", // 'synced' | 'syncing' | 'offline'
         student: null, // { name, classId, className, loggedInAt }
@@ -269,6 +270,9 @@
               state.db.chapters = Array.isArray(parsed.chapters) ? parsed.chapters : [];
               state.db.exams = Array.isArray(parsed.exams) ? parsed.exams : [];
               state.db.results = Array.isArray(parsed.results) ? parsed.results : [];
+              state.db.retakePermissions = (parsed.retakePermissions && typeof parsed.retakePermissions === "object")
+                ? parsed.retakePermissions
+                : {};
             }
           }
         } catch (e) {}
@@ -355,6 +359,43 @@
         return false;
       }
 
+      // Exam Retake Lock & Master Permission Helpers
+      function normalizeStudentName(name) {
+        return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+      }
+
+      function getRetakeKey(examId, studentName) {
+        return String(examId || "") + "::" + normalizeStudentName(studentName);
+      }
+
+      function getExamAttemptStatus(examId, studentName) {
+        const normName = normalizeStudentName(studentName);
+        if (!examId || !normName) {
+          return { locked: false, hasSubmitted: false, retakeAllowed: false, latestResult: null, latestTime: 0, permittedAt: 0 };
+        }
+
+        let latestTime = 0;
+        let latestResult = null;
+        (state.db.results || []).forEach(r => {
+          if (r && r.examId === examId && normalizeStudentName(r.studentName) === normName) {
+            const t = r.submittedAt ? Date.parse(r.submittedAt) : 1;
+            const safeT = Number.isFinite(t) ? t : 1;
+            if (!latestResult || safeT >= latestTime) {
+              latestTime = safeT;
+              latestResult = r;
+            }
+          }
+        });
+
+        const hasSubmitted = !!latestResult;
+        const key = getRetakeKey(examId, studentName);
+        const permittedAt = Number((state.db.retakePermissions && state.db.retakePermissions[key]) || 0);
+        const retakeAllowed = hasSubmitted && permittedAt > latestTime;
+        const locked = hasSubmitted && !retakeAllowed;
+
+        return { locked, hasSubmitted, retakeAllowed, latestResult, latestTime, permittedAt };
+      }
+
       async function syncFromCloud(showNotification) {
         state.syncStatus = "syncing";
         updateSyncBadge();
@@ -370,6 +411,9 @@
             state.db.chapters = Array.isArray(data.chapters) ? data.chapters : [];
             state.db.exams = Array.isArray(data.exams) ? data.exams : [];
             state.db.results = Array.isArray(data.results) ? data.results : [];
+            state.db.retakePermissions = (data.retakePermissions && typeof data.retakePermissions === "object")
+              ? data.retakePermissions
+              : {};
 
             const seeded = ensureDefaultClassesIfEmpty();
             saveCacheDb();
@@ -516,6 +560,16 @@
         if (route === "exam" && param) {
           const exam = state.db.exams.find(e => e.id === param);
           if (exam) {
+            const attemptStatus = getExamAttemptStatus(exam.id, state.student.name);
+            if (attemptStatus.locked) {
+              const saved = getSavedResume();
+              if (saved && saved.examId === exam.id) saveExamResume(null);
+              showToast("You have already submitted this exam. Ask Master for retake permission.", "warning");
+              state.view = "home";
+              try { history.replaceState(null, "", "#home"); } catch (e) {}
+              render();
+              return;
+            }
             if (!state.activeExam || state.activeExam.examId !== exam.id) {
               initExamSession(exam);
             }
@@ -678,9 +732,14 @@
         const attempted = correct + wrong;
         const accuracy = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
 
+        const stuName = state.student ? state.student.name : "Student";
+        const retakeKey = getRetakeKey(exam.id, stuName);
+        const prevPermittedAt = Number((state.db.retakePermissions && state.db.retakePermissions[retakeKey]) || 0);
+        const submittedAtMs = Math.max(Date.now(), prevPermittedAt + 1000);
+
         const resultObj = {
           id: uid("res"),
-          studentName: state.student ? state.student.name : "Student",
+          studentName: stuName,
           classId: state.student ? state.student.classId : exam.classId,
           className: state.student ? state.student.className : "",
           examId: exam.id,
@@ -692,7 +751,7 @@
           wrong,
           unattempted,
           accuracy,
-          submittedAt: new Date().toISOString(),
+          submittedAt: new Date(submittedAtMs).toISOString(),
           breakdown
         };
 
@@ -939,7 +998,10 @@
         const savedResume = getSavedResume();
         let resumeExamObj = null;
         if (savedResume && (savedResume.classId === cls.id || classKeysMatch(savedResume.classId, cls.id)) && cls.mcqEnabled) {
-          resumeExamObj = classExams.find(e => e.id === savedResume.examId) || null;
+          const candidateExam = classExams.find(e => e.id === savedResume.examId) || null;
+          if (candidateExam && !getExamAttemptStatus(candidateExam.id, stu.name).locked) {
+            resumeExamObj = candidateExam;
+          }
         }
 
         const completedCount = classChapters.filter(c => state.completedChapters[c.id]).length;
@@ -1099,20 +1161,36 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       ${classExams.map(ex => {
                         const qCount = (ex.questions || []).length;
+                        const attemptStatus = getExamAttemptStatus(ex.id, stu.name);
+                        const isLocked = attemptStatus.locked;
+                        const isRetake = attemptStatus.retakeAllowed;
+                        const btnDisabled = qCount === 0 || isLocked;
                         return `
-                          <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between gap-4">
+                          <div class="bg-white rounded-3xl border ${isLocked ? "border-slate-200 bg-slate-50/70" : "border-slate-200"} p-5 shadow-sm flex flex-col justify-between gap-4">
                             <div>
                               <div class="flex flex-wrap items-center gap-1.5">
                                 <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-700">${escapeHtml(ex.subject || "General")}</span>
                                 <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-800">${Number(ex.durationMins) || 15} mins</span>
                                 <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700">${qCount} Qs (${qCount * 4} Marks)</span>
+                                ${isLocked ? `<span class="px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold bg-slate-200 text-slate-700">Submitted</span>` : ""}
+                                ${isRetake ? `<span class="px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold bg-emerald-100 text-emerald-800">Retake Permitted</span>` : ""}
                               </div>
                               <h3 class="text-base font-extrabold text-slate-900 mt-2.5 leading-snug">${escapeHtml(ex.title)}</h3>
-                              <p class="text-xs text-slate-500 mt-1">+4 Correct &bull; -1 Wrong &bull; 0 Skipped</p>
+                              <p class="text-xs text-slate-500 mt-1">
+                                ${isLocked && attemptStatus.latestResult
+                                  ? "Last Score: " + attemptStatus.latestResult.score + "/" + attemptStatus.latestResult.maxMarks + " &bull; Locked until Master allows retake"
+                                  : "+4 Correct &bull; -1 Wrong &bull; 0 Skipped"}
+                              </p>
                             </div>
-                            <button onclick="window.portal.startExam('${escapeHtml(ex.id)}')" ${qCount === 0 ? "disabled" : ""}
-                              class="w-full py-2.5 rounded-xl text-sm font-bold transition ${qCount === 0 ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"}">
-                              ${qCount === 0 ? "No Questions Yet" : "Start Timed Exam &rarr;"}
+                            <button onclick="window.portal.startExam('${escapeHtml(ex.id)}')" ${btnDisabled ? "disabled" : ""}
+                              class="w-full py-2.5 rounded-xl text-sm font-bold transition ${btnDisabled ? "bg-slate-200 text-slate-500 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"}">
+                              ${qCount === 0
+                                ? "No Questions Yet"
+                                : isLocked
+                                  ? "Submitted (Master Permission Needed)"
+                                  : isRetake
+                                    ? "Retake Timed Exam &rarr;"
+                                    : "Start Timed Exam &rarr;"}
                             </button>
                           </div>
                         `;
@@ -1666,21 +1744,41 @@
               <div class="bg-white rounded-3xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">
                 No student exam results recorded yet.
               </div>
-            ` : results.map(r => `
-              <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h3 class="text-sm font-extrabold text-slate-900">${escapeHtml(r.studentName)} <span class="text-xs font-bold text-indigo-600">(${escapeHtml(r.className || r.classId)})</span></h3>
-                  <p class="text-xs text-slate-600">${escapeHtml(r.examTitle)}</p>
-                  <p class="text-[11px] text-slate-400 mt-0.5">${r.submittedAt ? new Date(r.submittedAt).toLocaleString() : ""}</p>
-                </div>
-                <div class="flex items-center gap-3">
-                  <div class="text-right">
-                    <div class="text-base font-extrabold font-mono-code text-slate-900">${r.score}/${r.maxMarks}</div>
-                    <div class="text-[11px] font-bold text-slate-500"><span class="text-emerald-600">+${r.correct}</span> / <span class="text-rose-600">-${r.wrong}</span> / ${r.unattempted} skip</div>
+            ` : results.map(r => {
+              const attemptStatus = getExamAttemptStatus(r.examId, r.studentName);
+              const isLatestForPair = attemptStatus.latestResult && attemptStatus.latestResult.id === r.id;
+              return `
+                <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 class="text-sm font-extrabold text-slate-900">${escapeHtml(r.studentName)} <span class="text-xs font-bold text-indigo-600">(${escapeHtml(r.className || r.classId)})</span></h3>
+                    <p class="text-xs text-slate-600">${escapeHtml(r.examTitle)}</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">${r.submittedAt ? new Date(r.submittedAt).toLocaleString() : ""}</p>
+                  </div>
+                  <div class="flex flex-wrap items-center justify-between sm:justify-end gap-3">
+                    <div class="text-left sm:text-right">
+                      <div class="text-base font-extrabold font-mono-code text-slate-900">${r.score}/${r.maxMarks}</div>
+                      <div class="text-[11px] font-bold text-slate-500"><span class="text-emerald-600">+${r.correct}</span> / <span class="text-rose-600">-${r.wrong}</span> / ${r.unattempted} skip</div>
+                    </div>
+                    ${isLatestForPair ? (
+                      attemptStatus.retakeAllowed ? `
+                        <div class="flex items-center gap-1.5">
+                          <span class="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">Retake Allowed</span>
+                          <button onclick="window.portal.revokeExamRetakeByResult('${escapeHtml(r.id)}')"
+                            class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700">
+                            Lock
+                          </button>
+                        </div>
+                      ` : `
+                        <button onclick="window.portal.grantExamRetakeByResult('${escapeHtml(r.id)}')"
+                          class="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
+                          Allow Retake
+                        </button>
+                      `
+                    ) : ""}
                   </div>
                 </div>
-              </div>
-            `).join("")}
+              `;
+            }).join("")}
           </div>
         `;
       }
@@ -2140,6 +2238,10 @@
         },
 
         startExam(examId) {
+          if (state.student && getExamAttemptStatus(examId, state.student.name).locked) {
+            showToast("You have already submitted this exam. Ask Master for retake permission.", "warning");
+            return;
+          }
           navigateToHash("#exam/" + examId);
         },
 
@@ -2292,6 +2394,30 @@
             render();
             await pushAllToCloud(false);
           }, true);
+        },
+
+        async grantExamRetakeByResult(resultId) {
+          const r = state.db.results.find(x => x.id === resultId);
+          if (!r) return;
+          const status = getExamAttemptStatus(r.examId, r.studentName);
+          const key = getRetakeKey(r.examId, r.studentName);
+          state.db.retakePermissions = state.db.retakePermissions || {};
+          state.db.retakePermissions[key] = Math.max(Date.now(), status.latestTime + 1000);
+          render();
+          await pushAllToCloud(true);
+          showToast("Retake permission granted to " + r.studentName + ".", "success");
+        },
+
+        async revokeExamRetakeByResult(resultId) {
+          const r = state.db.results.find(x => x.id === resultId);
+          if (!r) return;
+          const key = getRetakeKey(r.examId, r.studentName);
+          if (state.db.retakePermissions && state.db.retakePermissions[key]) {
+            delete state.db.retakePermissions[key];
+          }
+          render();
+          await pushAllToCloud(true);
+          showToast("Exam locked again for " + r.studentName + ".", "info");
         },
 
         exportResultsCsv() {
