@@ -55,6 +55,7 @@
     .scroll-body {
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-y: contain;
+      touch-action: pan-y;
     }
 
     .font-mono-code {
@@ -292,11 +293,76 @@
         return false;
       }
 
+      // Smart Class Matching & Student Session Auto-Reconciliation
+      function normalizeClassKey(str) {
+        if (str === null || str === undefined) return "";
+        let s = String(str).toLowerCase().replace(/[^a-z0-9]+/g, "");
+        if (/^cls\d+/.test(s)) {
+          s = "class" + s.slice(3);
+        }
+        return s;
+      }
+
+      function classKeysMatch(a, b) {
+        const ka = normalizeClassKey(a);
+        const kb = normalizeClassKey(b);
+        if (!ka || !kb) return false;
+        return ka === kb || ka === "class" + kb || kb === "class" + ka;
+      }
+
+      function resolveStudentClass(student, classes) {
+        if (!student || !Array.isArray(classes) || classes.length === 0) return null;
+        // 1. Exact ID match
+        let found = classes.find(c => c.id === student.classId);
+        if (found) return found;
+        // 2. Exact or normalized Name match
+        found = classes.find(c => c.name === student.className || classKeysMatch(c.name, student.className));
+        if (found) return found;
+        // 3. Normalized ID / cross-field match
+        found = classes.find(c =>
+          classKeysMatch(c.id, student.classId) ||
+          classKeysMatch(c.id, student.className) ||
+          classKeysMatch(c.name, student.classId)
+        );
+        return found || null;
+      }
+
+      function reconcileStudentSession() {
+        if (!state.student) return;
+        const matched = resolveStudentClass(state.student, state.db.classes);
+        if (matched && (state.student.classId !== matched.id || state.student.className !== matched.name)) {
+          state.student = {
+            ...state.student,
+            classId: matched.id,
+            className: matched.name
+          };
+          saveLocalSession();
+        }
+      }
+
+      function matchesStudentClass(item, student, classes) {
+        if (!item || !student) return false;
+        if (item.classId && student.classId && item.classId === student.classId) return true;
+
+        const itemClassObj = Array.isArray(classes) ? classes.find(c => c.id === item.classId) : null;
+        const itemClassName = item.className || (itemClassObj ? itemClassObj.name : "");
+
+        if (itemClassName && student.className && classKeysMatch(itemClassName, student.className)) return true;
+        if (item.classId && student.classId && classKeysMatch(item.classId, student.classId)) return true;
+        if (item.classId && student.className && classKeysMatch(item.classId, student.className)) return true;
+        if (itemClassName && student.classId && classKeysMatch(itemClassName, student.classId)) return true;
+
+        return false;
+      }
+
       async function syncFromCloud(showNotification) {
         state.syncStatus = "syncing";
         updateSyncBadge();
         try {
-          const resp = await fetch(CLOUD_API_URL + "?t=" + Date.now(), { method: "GET" });
+          const resp = await fetch(CLOUD_API_URL + "?t=" + Date.now(), {
+            method: "GET",
+            cache: "no-store"
+          });
           if (!resp.ok) throw new Error("HTTP " + resp.status);
           const data = await resp.json();
           if (data && typeof data === "object") {
@@ -307,6 +373,7 @@
 
             const seeded = ensureDefaultClassesIfEmpty();
             saveCacheDb();
+            reconcileStudentSession();
             if (seeded) {
               await pushAllToCloud(true);
             }
@@ -315,6 +382,7 @@
           if (showNotification) showToast("Synced with cloud database.", "success");
         } catch (err) {
           ensureDefaultClassesIfEmpty();
+          reconcileStudentSession();
           state.syncStatus = "offline";
           if (showNotification) showToast("Using offline cache. Check internet connection.", "warning");
         }
@@ -500,9 +568,9 @@
         return false;
       };
 
-      // Auto-save active exam if app goes to background
-      document.addEventListener("visibilitychange", () => {
-        if (document.hidden && state.view === "exam" && state.activeExam) {
+      // Auto-save active exam if app goes to background or page hides
+      function autoSaveExamOnBackground() {
+        if (state.view === "exam" && state.activeExam) {
           saveExamResume({
             ...state.activeExam,
             studentName: state.student ? state.student.name : "",
@@ -510,7 +578,12 @@
             savedAt: Date.now()
           });
         }
+      }
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) autoSaveExamOnBackground();
       });
+      window.addEventListener("pagehide", autoSaveExamOnBackground);
 
       // =======================================================================
       // 6. EXAM ENGINE (+4 / -1 / 0 MARKING, TIMER, RESUME)
@@ -848,9 +921,10 @@
       // -----------------------------------------------------------------------
       function renderHomeView() {
         const stu = state.student;
-        const cls = state.db.classes.find(c => c.id === stu.classId) || { id: stu.classId, name: stu.className, mcqEnabled: false };
-        const classChapters = state.db.chapters.filter(c => c.classId === cls.id);
-        const classExams = state.db.exams.filter(e => e.classId === cls.id);
+        const resolvedCls = resolveStudentClass(stu, state.db.classes);
+        const cls = resolvedCls || { id: stu.classId, name: stu.className, mcqEnabled: false };
+        const classChapters = state.db.chapters.filter(c => matchesStudentClass(c, stu, state.db.classes));
+        const classExams = state.db.exams.filter(e => matchesStudentClass(e, stu, state.db.classes));
 
         // Subjects for filter
         const subjects = ["All", ...Array.from(new Set(classChapters.map(c => c.subject).filter(Boolean)))];
@@ -864,11 +938,13 @@
         // Check for resumable exam for this class
         const savedResume = getSavedResume();
         let resumeExamObj = null;
-        if (savedResume && savedResume.classId === cls.id && cls.mcqEnabled) {
+        if (savedResume && (savedResume.classId === cls.id || classKeysMatch(savedResume.classId, cls.id)) && cls.mcqEnabled) {
           resumeExamObj = classExams.find(e => e.id === savedResume.examId) || null;
         }
 
         const completedCount = classChapters.filter(c => state.completedChapters[c.id]).length;
+        const otherClassChaptersCount = Math.max(0, state.db.chapters.length - classChapters.length);
+        const otherClassExamsCount = Math.max(0, state.db.exams.length - classExams.length);
 
         return `
           <div class="h-full flex flex-col overflow-hidden bg-slate-50">
@@ -959,9 +1035,17 @@
 
                   <!-- Chapter Cards (NO 'HTML NOTE' tags) -->
                   ${filteredChapters.length === 0 ? `
-                    <div class="bg-white rounded-3xl border border-dashed border-slate-300 p-8 text-center">
-                      <p class="text-sm font-bold text-slate-700">No study chapters available yet.</p>
-                      <p class="text-xs text-slate-500 mt-1">Chapters uploaded by your teacher for ${escapeHtml(cls.name)} will appear here.</p>
+                    <div class="bg-white rounded-3xl border border-dashed border-slate-300 p-8 text-center space-y-2.5">
+                      <p class="text-sm font-bold text-slate-700">No chapters uploaded for ${escapeHtml(cls.name)} yet.</p>
+                      <p class="text-xs text-slate-500">
+                        ${otherClassChaptersCount > 0
+                          ? "You are currently logged into " + escapeHtml(cls.name) + ". Chapters uploaded for other classes are hidden."
+                          : "Chapters uploaded by your teacher for " + escapeHtml(cls.name) + " will appear here."}
+                      </p>
+                      <button onclick="window.portal.manualSync()"
+                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition">
+                        Refresh Sync
+                      </button>
                     </div>
                   ` : `
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -999,9 +1083,17 @@
                       <p class="text-xs sm:text-sm text-slate-500 mt-1.5">Timed MCQ tests are not enabled for ${escapeHtml(cls.name)}. Please use the Study Chapters tab.</p>
                     </div>
                   ` : classExams.length === 0 ? `
-                    <div class="bg-white rounded-3xl border border-dashed border-slate-300 p-8 text-center">
-                      <p class="text-sm font-bold text-slate-700">No MCQ exams published yet.</p>
-                      <p class="text-xs text-slate-500 mt-1">Exams created for ${escapeHtml(cls.name)} will appear here.</p>
+                    <div class="bg-white rounded-3xl border border-dashed border-slate-300 p-8 text-center space-y-2.5">
+                      <p class="text-sm font-bold text-slate-700">No MCQ exams uploaded for ${escapeHtml(cls.name)} yet.</p>
+                      <p class="text-xs text-slate-500">
+                        ${otherClassExamsCount > 0
+                          ? "You are currently logged into " + escapeHtml(cls.name) + ". Exams created for other classes are hidden."
+                          : "Exams created for " + escapeHtml(cls.name) + " will appear here."}
+                      </p>
+                      <button onclick="window.portal.manualSync()"
+                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition">
+                        Refresh Sync
+                      </button>
                     </div>
                   ` : `
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -1637,13 +1729,13 @@
         const root = document.getElementById("modal-root");
         root.innerHTML = `
           <div class="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
-            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full max-h-[90dvh] flex flex-col overflow-hidden">
               <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
                 <h3 class="text-base font-extrabold text-slate-900">${existing ? "Edit Chapter / Note" : "Upload Chapter / Note"}</h3>
                 <button id="ch-close" class="text-slate-400 hover:text-slate-700 font-bold text-lg">&times;</button>
               </div>
 
-              <form id="chapter-modal-form" class="flex-1 min-h-0 overflow-y-auto scroll-body p-5 space-y-4">
+              <form id="chapter-modal-form" class="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-body p-5 space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label class="block text-xs font-bold text-slate-600 mb-1">Class *</label>
@@ -1764,9 +1856,12 @@
 
         document.getElementById("chapter-modal-form").onsubmit = async (e) => {
           e.preventDefault();
+          const selectedClassId = document.getElementById("ch-class").value;
+          const selectedClassObj = state.db.classes.find(c => c.id === selectedClassId);
           const payload = {
             id: existing ? existing.id : uid("ch"),
-            classId: document.getElementById("ch-class").value,
+            classId: selectedClassId,
+            className: selectedClassObj ? selectedClassObj.name : "",
             subject: document.getElementById("ch-subject").value.trim() || "General",
             title: document.getElementById("ch-title").value.trim(),
             takeaways: mode === "text" ? document.getElementById("ch-takeaways").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean) : [],
@@ -1837,9 +1932,12 @@
         document.getElementById("ex-cancel").onclick = closeModal;
         document.getElementById("exam-modal-form").onsubmit = async (e) => {
           e.preventDefault();
+          const selectedClassId = document.getElementById("ex-class").value;
+          const selectedClassObj = state.db.classes.find(c => c.id === selectedClassId);
           const payload = {
             id: existing ? existing.id : uid("ex"),
-            classId: document.getElementById("ex-class").value,
+            classId: selectedClassId,
+            className: selectedClassObj ? selectedClassObj.name : "",
             subject: document.getElementById("ex-subject").value.trim() || "General",
             durationMins: parseInt(document.getElementById("ex-duration").value, 10) || 15,
             title: document.getElementById("ex-title").value.trim(),
@@ -1867,7 +1965,7 @@
           const root = document.getElementById("modal-root");
           root.innerHTML = `
             <div class="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
-              <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+              <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90dvh] flex flex-col overflow-hidden">
                 <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
                   <div class="min-w-0">
                     <h3 class="text-sm sm:text-base font-extrabold text-slate-900 truncate">${escapeHtml(exam.title)}</h3>
@@ -1876,7 +1974,7 @@
                   <button id="qm-close" class="px-3 py-1.5 rounded-xl bg-slate-100 text-xs font-bold text-slate-700">Done</button>
                 </div>
 
-                <div class="flex-1 min-h-0 overflow-y-auto scroll-body p-5 space-y-5">
+                <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-body p-5 space-y-5">
                   <!-- HTML Question Paper Upload + Direct Paste -->
                   <div class="p-4 rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/40 space-y-3">
                     <div>
@@ -2121,6 +2219,9 @@
         // --- Master Actions ---
         exitMaster() {
           state.masterAuthed = false;
+          reconcileStudentSession();
+          state.homeSubjectFilter = "All";
+          state.homeSearch = "";
           navigateToHash(state.student ? "#home" : "#login");
         },
 
@@ -2228,6 +2329,7 @@
       loadLocalSession();
       loadCacheDb();
       ensureDefaultClassesIfEmpty();
+      reconcileStudentSession();
 
       if (state.student && (!window.location.hash || window.location.hash === "#login")) {
         try { history.replaceState(null, "", "#home"); } catch (e) {}
