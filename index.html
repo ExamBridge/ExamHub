@@ -31,22 +31,32 @@
   </script>
 
   <style>
+    /* Critical Android WebView & Mobile Touch Scrolling Rules */
     html, body {
       font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
       overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
       -webkit-tap-highlight-color: transparent;
-      overscroll-behavior-y: none;
+      height: auto;
+      min-height: 100%;
     }
     .font-mono-num {
       font-family: 'JetBrains Mono', monospace;
       font-variant-numeric: tabular-nums;
     }
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
+    .scroll-touch {
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
     }
-    .animate-fade-up {
-      animation: fadeUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    /* Opacity-only fade so parent containers never get a transform that breaks sticky/scroll */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.2s ease-out forwards;
     }
     @keyframes slideUp {
       from { transform: translateY(100%); }
@@ -70,10 +80,10 @@
     ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+<body class="bg-slate-50 text-slate-800 antialiased min-h-[100dvh] flex flex-col">
 
   <!-- ==================== APP SHELL ROOT ==================== -->
-  <div id="app-root" class="flex-1 flex flex-col min-h-screen">
+  <div id="app-root" class="flex-1 flex flex-col min-h-[100dvh]">
     <div id="loading-screen" class="flex-1 flex flex-col items-center justify-center px-6 py-24 text-center">
       <div class="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200 mb-5">
         <svg class="w-7 h-7 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -108,7 +118,7 @@
 
       const CLOUD_CACHE_KEY = "edumaster_cloud_cache_v3";
       const SESSION_STORAGE_KEY = "edumaster_student_session_v2";
-      const PROGRESS_STORAGE_KEY = "edumaster_exam_progress_v2";
+      const PROGRESS_STORAGE_KEY = "edumaster_paused_exam_v2";
       const COMPLETED_STORAGE_KEY = "edumaster_completed_chapters_v2";
 
       const SUBJECTS = [
@@ -128,7 +138,7 @@
       ];
 
       // =========================================================================
-      // 2. SYNCHRONOUS LOCAL STORAGE HELPERS
+      // 2. SYNCHRONOUS LOCAL STORAGE & SCROLL RESET HELPERS
       // =========================================================================
       function readLocalJson(key, fallback) {
         try {
@@ -152,6 +162,30 @@
         }
       }
 
+      /**
+       * Always restores natural document vertical scrolling on html & body.
+       * Prevents Android WebView from getting stuck in a non-scrollable state
+       * after closing a modal/drawer or switching between views.
+       */
+      function resetDocumentScroll(scrollToTop) {
+        document.documentElement.style.overflow = "";
+        document.documentElement.style.overflowY = "auto";
+        document.documentElement.style.height = "";
+        document.body.style.overflow = "";
+        document.body.style.overflowY = "auto";
+        document.body.style.position = "";
+        document.body.style.height = "";
+        if (scrollToTop) {
+          try {
+            window.scrollTo(0, 0);
+            document.documentElement.scrollTop = 0;
+            document.body.scrollTop = 0;
+          } catch (e) {
+            // Ignore
+          }
+        }
+      }
+
       function normalizeClasses(rawList) {
         if (!Array.isArray(rawList)) return [];
         return rawList.map((c, idx) => ({
@@ -162,8 +196,10 @@
         }));
       }
 
+      // Migrate any legacy paused exam progress if present
+      const legacyProgress = readLocalJson("edumaster_exam_progress_v2", null);
+      const restoredProgress = readLocalJson(PROGRESS_STORAGE_KEY, legacyProgress || {});
       const restoredSession = readLocalJson(SESSION_STORAGE_KEY, null);
-      const restoredProgress = readLocalJson(PROGRESS_STORAGE_KEY, {});
       const restoredCompleted = readLocalJson(COMPLETED_STORAGE_KEY, []);
       const cachedCloud = readLocalJson(CLOUD_CACHE_KEY, null);
 
@@ -206,6 +242,15 @@
         lastResultView: null
       };
 
+      // Active iframe resize observer/timer registry so we clean up cleanly on re-render
+      const iframeCleanupFns = [];
+      function cleanupIframeWatchers() {
+        while (iframeCleanupFns.length > 0) {
+          const fn = iframeCleanupFns.pop();
+          try { fn(); } catch (e) {}
+        }
+      }
+
       // =========================================================================
       // 4. GOOGLE APPS SCRIPT CLOUD SYNC (doGet & doPost)
       // =========================================================================
@@ -238,15 +283,14 @@
           const cloudResults = Array.isArray(data && data.results) ? data.results : [];
           const isCloudInit = Boolean(data && data.initialized);
 
-          // Only seed default starter classes if cloud has 0 classes AND !data.initialized
-          if (cloudClasses.length === 0 && !isCloudInit) {
+          // Only seed default classes if cloud DB is completely uninitialized
+          if (cloudClasses.length === 0 && !isCloudInit && cloudChapters.length === 0 && cloudExams.length === 0) {
             state.classes = DEFAULT_CLASSES.slice();
-            state.chapters = cloudChapters;
-            state.exams = cloudExams;
+            state.chapters = [];
+            state.exams = [];
             state.results = cloudResults;
             state.initialized = true;
             saveCloudCacheLocally();
-            // Persist initial default classes to cloud so they exist immediately
             pushAllToCloud(true);
           } else {
             state.classes = cloudClasses;
@@ -269,9 +313,8 @@
           }
         }
 
-        // Re-render safely if no modal or active exam is open
         const modalOpen = document.getElementById("modal-root") && document.getElementById("modal-root").innerHTML.trim() !== "";
-        if (!modalOpen && state.view !== "exam-runner") {
+        if (!modalOpen && state.view !== "exam-runner" && state.view !== "chapter-reader" && state.view !== "exam-result") {
           renderApp();
         } else {
           updateCloudBadgeDOM();
@@ -376,7 +419,122 @@
       }
 
       // =========================================================================
-      // 5. UTILITIES & UI HELPERS
+      // 5. HTML IFRAME SAFE WRAPPER & AUTO-HEIGHT RESIZER (TOUCH-SCROLL FIX)
+      // =========================================================================
+      /**
+       * Injects responsive wrap/scroll CSS into uploaded HTML notes or papers so
+       * wide formulas/tables never break layout, and ensures the iframe expands
+       * to its full document height so the parent page scrolls smoothly on Android.
+       */
+      function prepareResponsiveSrcdoc(rawHtml) {
+        const safeCss = `
+          <style data-edumaster-inject="1">
+            html, body {
+              margin: 0 !important;
+              padding: 14px !important;
+              height: auto !important;
+              min-height: 0 !important;
+              overflow-y: visible !important;
+              overflow-x: auto !important;
+              word-wrap: break-word !important;
+              overflow-wrap: anywhere !important;
+              box-sizing: border-box !important;
+              -webkit-text-size-adjust: 100%;
+            }
+            img, svg, video, canvas, iframe { max-width: 100% !important; height: auto !important; }
+            pre, code, table { max-width: 100% !important; overflow-x: auto !important; }
+          </style>
+        `;
+        const str = String(rawHtml || "");
+        if (/<\/head>/i.test(str)) {
+          return str.replace(/<\/head>/i, safeCss + "</head>");
+        }
+        if (/<body[^>]*>/i.test(str)) {
+          return str.replace(/<body[^>]*>/i, (m) => safeCss + m);
+        }
+        return "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>" + safeCss + "</head><body>" + str + "</body></html>";
+      }
+
+      /**
+       * Attaches automatic full-height resizing to a sandboxed iframe:
+       * - Immediately on load
+       * - Whenever images inside finish loading
+       * - Via ResizeObserver on iframe body/documentElement
+       * - Via a short stabilization interval (first 4 seconds) for web fonts / math / scripts
+       */
+      function attachAutoResizeIframe(iframeId, minHeightPx) {
+        const iframe = document.getElementById(iframeId);
+        if (!iframe) return;
+        const minH = minHeightPx || 420;
+
+        const resizeNow = () => {
+          try {
+            const doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
+            if (!doc || !doc.body) return;
+            const bodyH = doc.body.scrollHeight || 0;
+            const docElH = doc.documentElement ? doc.documentElement.scrollHeight : 0;
+            const targetH = Math.max(minH, bodyH, docElH) + 32;
+            if (Math.abs((parseInt(iframe.style.height, 10) || 0) - targetH) > 4) {
+              iframe.style.height = targetH + "px";
+            }
+          } catch (e) {
+            // Fallback height if sandboxed cross-origin
+            iframe.style.height = Math.max(minH, 700) + "px";
+          }
+        };
+
+        let ro = null;
+        let pollTimer = null;
+
+        const onLoadHandler = () => {
+          resizeNow();
+          try {
+            const doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
+            if (doc && doc.body) {
+              // Listen for all image loads inside the HTML note/paper
+              const imgs = doc.querySelectorAll("img");
+              imgs.forEach((img) => {
+                if (!img.complete) {
+                  img.addEventListener("load", resizeNow, { once: true });
+                  img.addEventListener("error", resizeNow, { once: true });
+                }
+              });
+
+              if (typeof ResizeObserver !== "undefined") {
+                if (ro) ro.disconnect();
+                ro = new ResizeObserver(() => resizeNow());
+                ro.observe(doc.body);
+                if (doc.documentElement) ro.observe(doc.documentElement);
+              }
+            }
+          } catch (e) {}
+
+          // Short stabilization polling for async fonts / dynamic layouts
+          let ticks = 0;
+          if (pollTimer) clearInterval(pollTimer);
+          pollTimer = setInterval(() => {
+            resizeNow();
+            ticks++;
+            if (ticks >= 10) {
+              clearInterval(pollTimer);
+              pollTimer = null;
+            }
+          }, 400);
+        };
+
+        iframe.addEventListener("load", onLoadHandler);
+        // Trigger once in case already loaded synchronously
+        setTimeout(resizeNow, 120);
+
+        iframeCleanupFns.push(() => {
+          iframe.removeEventListener("load", onLoadHandler);
+          if (ro) ro.disconnect();
+          if (pollTimer) clearInterval(pollTimer);
+        });
+      }
+
+      // =========================================================================
+      // 6. UTILITIES & UI HELPERS
       // =========================================================================
       function escapeHtml(str) {
         if (str === null || str === undefined) return "";
@@ -426,7 +584,7 @@
           info: "bg-slate-900 text-white border-slate-800"
         };
         const el = document.createElement("div");
-        el.className = "pointer-events-auto px-4 py-3 rounded-2xl shadow-xl border text-sm font-semibold animate-fade-up " + (palette[type] || palette.info);
+        el.className = "pointer-events-auto px-4 py-3 rounded-2xl shadow-xl border text-sm font-semibold animate-fade-in " + (palette[type] || palette.info);
         el.textContent = message;
         container.appendChild(el);
         setTimeout(() => {
@@ -439,6 +597,7 @@
       function closeModal() {
         const root = document.getElementById("modal-root");
         if (root) root.innerHTML = "";
+        resetDocumentScroll(false);
       }
 
       function showConfirmModal(opts) {
@@ -446,12 +605,14 @@
           ? "bg-rose-600 hover:bg-rose-700 text-white"
           : "bg-indigo-600 hover:bg-indigo-700 text-white";
         document.getElementById("modal-root").innerHTML = `
-          <div class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-up">
-            <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
-              <h3 class="text-lg font-bold text-slate-900">${escapeHtml(opts.title)}</h3>
-              <p class="text-sm text-slate-600 mt-2 leading-relaxed">${escapeHtml(opts.message)}</p>
-              <div class="mt-6 flex items-center justify-end gap-2.5">
-                <button id="cfm-cancel" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition">Cancel</button>
+          <div class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full max-h-[90dvh] flex flex-col overflow-hidden">
+              <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-touch p-6">
+                <h3 class="text-lg font-bold text-slate-900">${escapeHtml(opts.title)}</h3>
+                <p class="text-sm text-slate-600 mt-2 leading-relaxed">${escapeHtml(opts.message)}</p>
+              </div>
+              <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0">
+                <button id="cfm-cancel" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-700 bg-slate-200/70 hover:bg-slate-200 transition">Cancel</button>
                 <button id="cfm-ok" class="px-5 py-2.5 rounded-xl text-sm font-bold transition ${btnStyle}">${escapeHtml(opts.confirmText || "Confirm")}</button>
               </div>
             </div>
@@ -477,7 +638,7 @@
       }
 
       // =========================================================================
-      // 6. BULLETPROOF BACK-BUTTON & ANDROID WEBVIEW GUARD
+      // 7. BULLETPROOF BACK-BUTTON & ANDROID WEBVIEW GUARD
       // =========================================================================
       function pushNavState(viewName, extra) {
         try {
@@ -501,6 +662,7 @@
 
         if (state.mobilePaletteOpen) {
           state.mobilePaletteOpen = false;
+          resetDocumentScroll(false);
           renderApp();
           pushNavState("exam-runner");
           return true;
@@ -515,6 +677,7 @@
           state.activeChapterId = null;
           state.lastResultView = null;
           state.view = state.studentSession ? "student-home" : "login";
+          resetDocumentScroll(true);
           renderApp();
           if (state.view === "student-home") ensureHomeGuard();
           return true;
@@ -522,6 +685,7 @@
 
         if (state.view === "master") {
           state.view = state.studentSession ? "student-home" : "login";
+          resetDocumentScroll(true);
           renderApp();
           if (state.view === "student-home") ensureHomeGuard();
           return true;
@@ -555,9 +719,12 @@
       });
 
       // =========================================================================
-      // 7. MASTER RENDER DISPATCHER
+      // 8. MASTER RENDER DISPATCHER
       // =========================================================================
-      function renderApp() {
+      function renderApp(scrollTop) {
+        cleanupIframeWatchers();
+        resetDocumentScroll(Boolean(scrollTop));
+
         const root = document.getElementById("app-root");
         if (!root) return;
 
@@ -570,9 +737,11 @@
             break;
           case "chapter-reader":
             root.innerHTML = renderChapterReaderView();
+            attachAutoResizeIframe("chapter-html-iframe", 480);
             break;
           case "exam-runner":
             root.innerHTML = renderExamRunnerView();
+            attachAutoResizeIframe("exam-html-paper-iframe", 480);
             break;
           case "exam-result":
             root.innerHTML = renderExamResultView();
@@ -586,13 +755,13 @@
       }
 
       // =========================================================================
-      // 8. VIEW: DEDICATED STUDENT LOGIN PAGE
+      // 9. VIEW: DEDICATED STUDENT LOGIN PAGE
       // =========================================================================
       function renderLoginView() {
         const classOptions = state.classes.length > 0 ? state.classes : DEFAULT_CLASSES;
 
         return `
-          <div class="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-indigo-50/40 to-slate-100">
+          <div class="min-h-[100dvh] flex flex-col bg-gradient-to-br from-slate-50 via-indigo-50/40 to-slate-100 pb-24">
             <header class="w-full max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-2">
               <div class="flex items-center gap-2.5">
                 <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
@@ -623,7 +792,7 @@
             </header>
 
             <main class="flex-1 flex items-center justify-center px-4 py-8">
-              <div class="w-full max-w-md bg-white rounded-3xl shadow-xl shadow-slate-200/70 border border-slate-200/80 p-6 sm:p-8 animate-fade-up">
+              <div class="w-full max-w-md bg-white rounded-3xl shadow-xl shadow-slate-200/70 border border-slate-200/80 p-6 sm:p-8 animate-fade-in">
                 <div class="text-center mb-7">
                   <div class="w-14 h-14 mx-auto rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center mb-4">
                     <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -680,7 +849,7 @@
       }
 
       // =========================================================================
-      // 9. VIEW: STUDENT HOME PAGE
+      // 10. VIEW: STUDENT HOME PAGE
       // =========================================================================
       function renderStudentHomeView() {
         if (!state.studentSession) {
@@ -711,7 +880,7 @@
           .sort((a, b) => (b.saved.updatedAt || 0) - (a.saved.updatedAt || 0));
 
         return `
-          <div class="min-h-screen flex flex-col bg-slate-50">
+          <div class="min-h-[100dvh] flex flex-col bg-slate-50 pb-24">
             <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
               <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2">
                 <div class="flex items-center gap-2.5 min-w-0">
@@ -752,7 +921,7 @@
               </div>
             </header>
 
-            <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-5 sm:py-7 space-y-6 animate-fade-up">
+            <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-5 sm:py-7 space-y-6 animate-fade-in">
               <!-- Uneditable Student Profile Banner -->
               <section class="bg-gradient-to-r from-indigo-600 via-indigo-600 to-violet-600 text-white rounded-3xl p-5 sm:p-6 shadow-lg shadow-indigo-200/70">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -925,7 +1094,7 @@
 
                         <h3 class="text-base font-extrabold text-slate-900 leading-snug">${escapeHtml(ch.title)}</h3>
                         <p class="text-sm text-slate-500 mt-2 line-clamp-3 leading-relaxed">
-                          ${isHtml ? "Interactive HTML formatted study notes. Tap below to open full reader." : escapeHtml(ch.content)}
+                          ${isHtml ? "Formatted HTML study notes. Tap below to open full scrollable reader." : escapeHtml(ch.content)}
                         </p>
                       </div>
 
@@ -1042,7 +1211,7 @@
       }
 
       // =========================================================================
-      // 10. VIEW: CHAPTER READER (STANDARD + SANDBOXED HTML IFRAME)
+      // 11. VIEW: FULL-PAGE SCROLLABLE CHAPTER READER (ANDROID WEBVIEW FIXED)
       // =========================================================================
       function renderChapterReaderView() {
         const ch = state.chapters.find(c => c.id === state.activeChapterId);
@@ -1052,52 +1221,61 @@
         }
         const done = state.completedChapterIds.has(ch.id);
         const isHtml = ch.contentType === "html" && ch.htmlContent;
+        const preparedSrcdoc = isHtml ? prepareResponsiveSrcdoc(ch.htmlContent) : "";
 
         return `
-          <div class="min-h-screen flex flex-col bg-slate-50">
-            <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
-              <div class="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+          <div class="min-h-[100dvh] flex flex-col bg-slate-50 pb-24">
+            <!-- Sticky Top Reader Bar -->
+            <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
+              <div class="max-w-5xl mx-auto px-3 sm:px-6 py-3 flex items-center justify-between gap-2">
                 <button onclick="window.app.backToStudentHome()"
-                  class="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition flex items-center gap-1.5 shrink-0">
+                  class="px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition flex items-center gap-1.5 shrink-0">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
-                  Back to Home
+                  <span>Back</span>
                 </button>
 
-                <div class="min-w-0 text-center hidden sm:block">
-                  <p class="text-xs font-bold text-indigo-600">${escapeHtml(ch.className)} &bull; ${escapeHtml(ch.subject)}</p>
-                  <h2 class="text-sm font-extrabold text-slate-900 truncate">${escapeHtml(ch.title)}</h2>
+                <div class="min-w-0 flex-1 text-center px-1">
+                  <div class="flex items-center justify-center gap-1.5 mb-0.5">
+                    <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700">${escapeHtml(ch.subject)}</span>
+                    <span class="text-[10px] font-semibold text-slate-400 hidden sm:inline">${escapeHtml(ch.className)}</span>
+                  </div>
+                  <h2 class="text-xs sm:text-sm font-extrabold text-slate-900 truncate">${escapeHtml(ch.title)}</h2>
                 </div>
 
                 <button onclick="window.app.toggleChapterComplete('${ch.id}')"
-                  class="px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
-                    done ? "bg-emerald-100 text-emerald-800" : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  class="px-3 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
+                    done ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-emerald-600 hover:bg-emerald-700 text-white"
                   }">
-                  ${done ? "&#10003; Completed" : "Mark Read"}
+                  ${done ? "&#10003; Done" : "Mark Read"}
                 </button>
               </div>
             </header>
 
-            <main class="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 space-y-5 animate-fade-up">
-              <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-8">
-                <div class="flex flex-wrap items-center gap-2 mb-2">
+            <!-- Natural Document Flow Content (Scrolls Freely on Android WebView) -->
+            <main class="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-6 py-5 sm:py-7 space-y-5">
+              <article class="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-8">
+                <div class="flex flex-wrap items-center gap-2 mb-2.5">
                   <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700">${escapeHtml(ch.className)}</span>
                   <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-700">${escapeHtml(ch.subject)}</span>
                   ${isHtml ? '<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-violet-50 text-violet-700">HTML Study Document</span>' : ""}
                 </div>
-                <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">${escapeHtml(ch.title)}</h1>
+                <h1 class="text-xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-snug">${escapeHtml(ch.title)}</h1>
 
                 ${isHtml ? `
-                  <div class="mt-6 rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                  <!-- Auto-Resizing Full-Height Iframe so Touch Scroll Passes Naturally to Page -->
+                  <div class="mt-5 rounded-2xl border border-slate-200 bg-white overflow-hidden">
                     <iframe
-                      sandbox="allow-same-origin"
-                      srcdoc="${escapeHtml(ch.htmlContent)}"
-                      class="w-full min-h-[70vh] border-0 bg-white"
-                      onload="try{this.style.height = Math.max(520, this.contentWindow.document.body.scrollHeight + 48) + 'px';}catch(e){}"
+                      id="chapter-html-iframe"
+                      sandbox="allow-scripts allow-same-origin"
+                      scrolling="no"
+                      srcdoc="${escapeHtml(preparedSrcdoc)}"
+                      style="width: 100%; min-height: 480px; border: 0; display: block; overflow: hidden;"
+                      class="bg-white"
                     ></iframe>
                   </div>
                 ` : `
                   ${Array.isArray(ch.takeaways) && ch.takeaways.length > 0 ? `
-                    <div class="mt-6 rounded-2xl bg-indigo-50/70 border border-indigo-100 p-5">
+                    <div class="mt-5 rounded-2xl bg-indigo-50/70 border border-indigo-100 p-4 sm:p-5">
                       <h3 class="text-xs font-extrabold uppercase tracking-wider text-indigo-800 mb-3">Key Takeaways</h3>
                       <ul class="space-y-2 text-sm text-indigo-950">
                         ${ch.takeaways.map(t => `<li class="flex items-start gap-2.5"><span class="text-indigo-600 font-bold mt-0.5">&bull;</span><span>${escapeHtml(t)}</span></li>`).join("")}
@@ -1105,7 +1283,7 @@
                     </div>
                   ` : ""}
 
-                  <div class="mt-6 text-slate-700 text-sm sm:text-base leading-relaxed whitespace-pre-line bg-slate-50 rounded-2xl p-5 sm:p-6 border border-slate-100">
+                  <div class="mt-5 text-slate-700 text-sm sm:text-base leading-relaxed whitespace-pre-line break-words bg-slate-50 rounded-2xl p-4 sm:p-6 border border-slate-100">
                     ${escapeHtml(ch.content)}
                   </div>
                 `}
@@ -1122,14 +1300,27 @@
                     </a>
                   </div>
                 ` : ""}
-              </div>
+
+                <div class="mt-6 pt-5 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <button onclick="window.app.backToStudentHome()"
+                    class="w-full sm:w-auto px-5 py-3 rounded-xl text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition">
+                    &larr; Back to Home
+                  </button>
+                  <button onclick="window.app.toggleChapterComplete('${ch.id}')"
+                    class="w-full sm:w-auto px-5 py-3 rounded-xl text-sm font-bold transition ${
+                      done ? "bg-emerald-100 text-emerald-800" : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    }">
+                    ${done ? "&#10003; Marked as Completed" : "Mark Chapter as Completed"}
+                  </button>
+                </div>
+              </article>
             </main>
           </div>
         `;
       }
 
       // =========================================================================
-      // 11. INTERACTIVE EXAM RUNNER (+4 / -1, RESUME, MOBILE DRAWER, HTML-OMR)
+      // 12. INTERACTIVE EXAM RUNNER (+4 / -1, RESUME, MOBILE DRAWER, HTML-OMR)
       // =========================================================================
       function clearExamTimer() {
         if (state.timerInterval) {
@@ -1160,7 +1351,7 @@
           state.mobilePaletteOpen = false;
           state.view = "student-home";
           ensureHomeGuard();
-          renderApp();
+          renderApp(true);
           showToast(
             fromBackBtn
               ? "Exam paused & progress saved. You can resume anytime."
@@ -1170,7 +1361,7 @@
         } else {
           state.view = "student-home";
           ensureHomeGuard();
-          renderApp();
+          renderApp(true);
         }
       }
 
@@ -1188,6 +1379,7 @@
         }
 
         clearExamTimer();
+        closeModal();
         const { name, className } = state.studentSession;
         const progressKey = makeProgressKey(name, className, exam.id);
         const saved = state.savedProgressMap[progressKey];
@@ -1228,8 +1420,7 @@
           }
         }, 1000);
 
-        renderApp();
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        renderApp(true);
       }
 
       function updateExamTimerDOM() {
@@ -1249,6 +1440,7 @@
 
       async function finalizeExamSubmission() {
         clearExamTimer();
+        closeModal();
         const sess = state.examSession;
         if (!sess || sess.submittedResult) return;
 
@@ -1309,8 +1501,8 @@
         state.mobilePaletteOpen = false;
         state.view = "exam-result";
         pushNavState("exam-result");
-        renderApp();
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        // Explicitly unlock scroll & scroll to top for the Results & Review page
+        renderApp(true);
 
         await postStudentResultToCloud(resultRecord);
       }
@@ -1327,6 +1519,7 @@
         const answeredCount = Object.keys(answers).length;
         const letters = ["A", "B", "C", "D"];
         const isHtmlOmr = exam.examType === "html-omr" && exam.htmlPaperContent;
+        const preparedPaperSrcdoc = isHtmlOmr ? prepareResponsiveSrcdoc(exam.htmlPaperContent) : "";
 
         const timerClass = remainingSeconds <= 30
           ? "bg-rose-600 text-white timer-critical"
@@ -1361,7 +1554,8 @@
         `;
 
         return `
-          <div class="min-h-screen flex flex-col bg-slate-50 pb-20 lg:pb-8">
+          <div class="min-h-[100dvh] flex flex-col bg-slate-50 pb-28 lg:pb-16">
+            <!-- Sticky Top Timer Bar -->
             <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
               <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2">
                 <div class="flex items-center gap-2 min-w-0">
@@ -1401,13 +1595,15 @@
                   <div class="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div class="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
                       <span class="text-xs font-bold uppercase tracking-wider text-amber-400">HTML Question Paper</span>
-                      <span class="text-xs text-slate-300">${escapeHtml(exam.title)}</span>
+                      <span class="text-xs text-slate-300 truncate ml-2">${escapeHtml(exam.title)}</span>
                     </div>
                     <iframe
-                      sandbox="allow-same-origin"
-                      srcdoc="${escapeHtml(exam.htmlPaperContent)}"
-                      class="w-full min-h-[65vh] border-0 bg-white"
-                      onload="try{this.style.height = Math.max(520, this.contentWindow.document.body.scrollHeight + 40) + 'px';}catch(e){}"
+                      id="exam-html-paper-iframe"
+                      sandbox="allow-scripts allow-same-origin"
+                      scrolling="no"
+                      srcdoc="${escapeHtml(preparedPaperSrcdoc)}"
+                      style="width: 100%; min-height: 480px; border: 0; display: block; overflow: hidden;"
+                      class="bg-white"
                     ></iframe>
                   </div>
 
@@ -1419,7 +1615,7 @@
                       </div>
                       <span class="text-[11px] font-mono-num font-bold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700">+4 / -1</span>
                     </div>
-                    <div class="space-y-2.5 max-h-[62vh] overflow-y-auto pr-1">
+                    <div class="space-y-2.5 lg:max-h-[65vh] lg:overflow-y-auto scroll-touch pr-1">
                       ${questions.map((_, qIdx) => {
                         const picked = answers[qIdx];
                         return `
@@ -1471,7 +1667,7 @@
                         </button>
                       </div>
 
-                      <h2 class="text-base sm:text-xl font-bold text-slate-900 mt-5 leading-relaxed">
+                      <h2 class="text-base sm:text-xl font-bold text-slate-900 mt-5 leading-relaxed break-words">
                         ${escapeHtml(q.text)}
                       </h2>
 
@@ -1488,13 +1684,13 @@
                               <span class="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-extrabold shrink-0 ${
                                 isSelected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600"
                               }">${letters[optIdx]}</span>
-                              <span class="text-sm sm:text-base font-medium leading-snug">${escapeHtml(opt)}</span>
+                              <span class="text-sm sm:text-base font-medium leading-snug break-words">${escapeHtml(opt)}</span>
                             </button>
                           `;
                         }).join("")}
                       </div>
 
-                      <div class="mt-7 pt-5 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <div class="mt-7 pt-5 border-t border-slate-100 hidden lg:flex items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
                           <button onclick="window.app.jumpToExamQuestion(${currentIndex - 1})" ${currentIndex === 0 ? "disabled" : ""}
                             class="px-4 py-3 rounded-xl text-sm font-bold border transition ${
@@ -1521,6 +1717,14 @@
                           </button>
                         `}
                       </div>
+
+                      ${selectedOpt !== undefined ? `
+                        <div class="mt-4 lg:hidden flex justify-end">
+                          <button onclick="window.app.clearExamOption(${currentIndex})" class="px-3 py-2 rounded-xl text-xs font-bold text-rose-600 bg-rose-50">
+                            Clear Selected Option
+                          </button>
+                        </div>
+                      ` : ""}
                     </div>
 
                     <aside class="hidden lg:block lg:col-span-4 bg-white rounded-3xl border border-slate-200 shadow-sm p-5 space-y-4 sticky top-24">
@@ -1532,30 +1736,48 @@
                     </aside>
                   </div>
 
-                  <!-- Mobile Bottom Floating Bar -->
-                  <div class="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
-                    <div class="text-xs font-semibold text-slate-600">
-                      <span class="font-extrabold text-slate-900 font-mono-num">${answeredCount}/${questions.length}</span> Answered
-                    </div>
-                    <button onclick="window.app.toggleMobilePalette(true)"
-                      class="px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold flex items-center gap-2 shadow-sm">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-                      Question Palette
+                  <!-- Mobile Fixed Bottom Navigation Bar (Prev / Palette / Next) -->
+                  <div class="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 px-3 py-2.5 flex items-center justify-between gap-2 shadow-[0_-4px_16px_rgba(15,23,42,0.06)]">
+                    <button onclick="window.app.jumpToExamQuestion(${currentIndex - 1})" ${currentIndex === 0 ? "disabled" : ""}
+                      class="px-3.5 py-2.5 rounded-xl text-xs font-bold border transition ${
+                        currentIndex === 0 ? "border-slate-100 text-slate-300 cursor-not-allowed" : "border-slate-200 text-slate-700 bg-slate-50"
+                      }">
+                      &larr; Prev
                     </button>
+
+                    <button onclick="window.app.toggleMobilePalette(true)"
+                      class="px-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                      <span class="font-mono-num">${answeredCount}/${questions.length}</span>
+                    </button>
+
+                    ${currentIndex < questions.length - 1 ? `
+                      <button onclick="window.app.jumpToExamQuestion(${currentIndex + 1})"
+                        class="px-4 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 text-white shadow-sm">
+                        Next &rarr;
+                      </button>
+                    ` : `
+                      <button onclick="window.app.promptSubmitExam()"
+                        class="px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 text-white shadow-sm">
+                        Submit
+                      </button>
+                    `}
                   </div>
 
                   <!-- Mobile Slide-Up Drawer -->
                   ${state.mobilePaletteOpen ? `
                     <div class="lg:hidden fixed inset-0 z-50 flex flex-col justify-end bg-slate-900/60 backdrop-blur-sm" onclick="if(event.target===this) window.app.toggleMobilePalette(false)">
-                      <div class="bg-white rounded-t-3xl p-5 space-y-4 max-h-[80vh] overflow-y-auto animate-slide-up">
-                        <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <div class="bg-white rounded-t-3xl max-h-[82dvh] flex flex-col overflow-hidden animate-slide-up">
+                        <div class="px-5 py-4 flex items-center justify-between border-b border-slate-100 shrink-0">
                           <div>
                             <h3 class="text-base font-extrabold text-slate-900">Question Palette</h3>
                             <p class="text-xs text-slate-500">Tap any number to jump directly</p>
                           </div>
                           <button onclick="window.app.toggleMobilePalette(false)" class="p-2 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm">&#10005;</button>
                         </div>
-                        ${paletteGridHtml}
+                        <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-touch p-5 space-y-4">
+                          ${paletteGridHtml}
+                        </div>
                       </div>
                     </div>
                   ` : ""}
@@ -1567,7 +1789,7 @@
       }
 
       // =========================================================================
-      // 12. VIEW: EXAM RESULTS SCREEN
+      // 13. VIEW: FULL-PAGE SCROLLABLE EXAM RESULTS & ANSWER REVIEW SCREEN
       // =========================================================================
       function renderExamResultView() {
         const data = state.lastResultView;
@@ -1579,25 +1801,30 @@
         const letters = ["A", "B", "C", "D"];
 
         return `
-          <div class="min-h-screen flex flex-col bg-slate-50">
-            <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
+          <div class="min-h-[100dvh] flex flex-col bg-slate-50 pb-24">
+            <!-- Sticky Top Results Bar -->
+            <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
               <div class="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-                <h1 class="text-base font-extrabold text-slate-900">Exam Result Summary</h1>
+                <div class="min-w-0">
+                  <h1 class="text-base font-extrabold text-slate-900 truncate">Exam Result &amp; Review</h1>
+                  <p class="text-[11px] font-semibold text-indigo-600 truncate">${escapeHtml(result.studentName)} &bull; ${escapeHtml(result.className)}</p>
+                </div>
                 <button onclick="window.app.backToStudentHome()"
-                  class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition">
+                  class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shrink-0 transition">
                   &larr; Back to Home
                 </button>
               </div>
             </header>
 
-            <main class="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6 animate-fade-up">
-              <section class="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8">
+            <!-- Natural Full-Page Scrollable Content -->
+            <main class="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+              <section class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-8">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
-                  <div>
+                  <div class="min-w-0">
                     <span class="inline-flex px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 mb-2">
                       +4 Correct &bull; -1 Wrong &bull; 0 Unattempted
                     </span>
-                    <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900">${escapeHtml(result.examTitle)}</h2>
+                    <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 break-words">${escapeHtml(result.examTitle)}</h2>
                     <p class="text-sm text-slate-500 mt-1">
                       Student: <strong class="text-slate-900">${escapeHtml(result.studentName)}</strong> &bull;
                       <strong class="text-indigo-700">${escapeHtml(result.className)}</strong> &bull;
@@ -1635,7 +1862,10 @@
               </section>
 
               <section class="space-y-4">
-                <h3 class="text-lg font-extrabold text-slate-900">Detailed Question Review</h3>
+                <div class="flex items-center justify-between">
+                  <h3 class="text-lg font-extrabold text-slate-900">Question-by-Question Review (${exam.questions.length})</h3>
+                </div>
+
                 ${exam.questions.map((q, idx) => {
                   const picked = answers[idx];
                   const isSkipped = picked === undefined || picked === null;
@@ -1647,9 +1877,9 @@
                       : '<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 font-mono-num">-1 Wrong</span>';
 
                   return `
-                    <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                    <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm">
                       <div class="flex items-start justify-between gap-3">
-                        <h4 class="text-sm sm:text-base font-bold text-slate-900">Q${idx + 1}. ${escapeHtml(q.text)}</h4>
+                        <h4 class="text-sm sm:text-base font-bold text-slate-900 leading-snug break-words">Q${idx + 1}. ${escapeHtml(q.text)}</h4>
                         <div class="shrink-0">${markBadge}</div>
                       </div>
 
@@ -1662,7 +1892,7 @@
                             if (rightOpt) style = "bg-emerald-50 border-emerald-400 text-emerald-950 font-semibold";
                             else if (userPick && !rightOpt) style = "bg-rose-50 border-rose-400 text-rose-950 font-semibold";
                             return `
-                              <div class="p-3 rounded-xl border text-xs sm:text-sm flex items-center justify-between gap-2 ${style}">
+                              <div class="p-3 rounded-xl border text-xs sm:text-sm flex items-center justify-between gap-2 break-words ${style}">
                                 <span><strong>${letters[optIdx]}.</strong> ${escapeHtml(opt)}</span>
                                 ${rightOpt ? '<span class="text-[11px] font-bold text-emerald-700 shrink-0">&#10003;</span>' : ""}
                                 ${userPick && !rightOpt ? '<span class="text-[11px] font-bold text-rose-700 shrink-0">&#10007;</span>' : ""}
@@ -1678,13 +1908,20 @@
                       `}
 
                       ${q.explanation ? `
-                        <div class="mt-3.5 p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs sm:text-sm text-indigo-950">
+                        <div class="mt-3.5 p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs sm:text-sm text-indigo-950 break-words">
                           <strong class="text-indigo-800">Explanation:</strong> ${escapeHtml(q.explanation)}
                         </div>
                       ` : ""}
                     </div>
                   `;
                 }).join("")}
+
+                <div class="pt-4">
+                  <button onclick="window.app.backToStudentHome()"
+                    class="w-full py-3.5 rounded-2xl text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">
+                    &larr; Return to Student Home
+                  </button>
+                </div>
               </section>
             </main>
           </div>
@@ -1692,43 +1929,45 @@
       }
 
       // =========================================================================
-      // 13. VIEW: MASTER CONTROL PANEL (NO PIN HINTS, NO SAMPLE DOWNLOADS)
+      // 14. VIEW: MASTER CONTROL PANEL (NO PIN HINTS, NO SAMPLE DOWNLOADS)
       // =========================================================================
       function openMasterLoginModal() {
         if (state.isMasterAuth) {
           state.view = "master";
           pushNavState("master");
-          renderApp();
+          renderApp(true);
           return;
         }
         document.getElementById("modal-root").innerHTML = `
-          <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-up">
-            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-sm w-full p-6">
-              <div class="flex items-center gap-3 mb-5">
-                <div class="w-11 h-11 rounded-2xl bg-slate-900 text-amber-400 flex items-center justify-center shrink-0">
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
+          <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-sm w-full max-h-[90dvh] flex flex-col overflow-hidden">
+              <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-touch p-6">
+                <div class="flex items-center gap-3 mb-5">
+                  <div class="w-11 h-11 rounded-2xl bg-slate-900 text-amber-400 flex items-center justify-center shrink-0">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-extrabold text-slate-900">Master Admin</h3>
+                    <p class="text-xs text-slate-500">Authorized access only</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 class="text-lg font-extrabold text-slate-900">Master Admin</h3>
-                  <p class="text-xs text-slate-500">Authorized access only</p>
-                </div>
-              </div>
 
-              <form id="master-pin-form" class="space-y-4">
-                <div>
-                  <label for="master-pin-field" class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">Enter Master PIN</label>
-                  <input id="master-pin-field" type="password" inputmode="numeric" autocomplete="off" required autofocus
-                    placeholder="••••••••"
-                    class="w-full px-4 py-3 rounded-2xl border border-slate-300 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none text-center text-lg font-mono-num tracking-widest" />
-                  <p id="master-pin-err" class="text-xs text-rose-600 font-semibold mt-1.5 hidden">Invalid PIN. Please try again.</p>
-                </div>
-                <div class="flex items-center justify-end gap-2 pt-1">
-                  <button type="button" onclick="window.app.closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200">Cancel</button>
-                  <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-900 hover:bg-slate-800 text-amber-400 transition">Unlock</button>
-                </div>
-              </form>
+                <form id="master-pin-form" class="space-y-4">
+                  <div>
+                    <label for="master-pin-field" class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">Enter Master PIN</label>
+                    <input id="master-pin-field" type="password" inputmode="numeric" autocomplete="off" required autofocus
+                      placeholder="••••••••"
+                      class="w-full px-4 py-3 rounded-2xl border border-slate-300 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none text-center text-lg font-mono-num tracking-widest" />
+                    <p id="master-pin-err" class="text-xs text-rose-600 font-semibold mt-1.5 hidden">Invalid PIN. Please try again.</p>
+                  </div>
+                  <div class="flex items-center justify-end gap-2 pt-1">
+                    <button type="button" onclick="window.app.closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200">Cancel</button>
+                    <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-900 hover:bg-slate-800 text-amber-400 transition">Unlock</button>
+                  </div>
+                </form>
+              </div>
             </div>
           </div>
         `;
@@ -1742,7 +1981,7 @@
             closeModal();
             pushNavState("master");
             showToast("Master Control Panel unlocked.", "success");
-            renderApp();
+            renderApp(true);
           } else {
             document.getElementById("master-pin-err").classList.remove("hidden");
             document.getElementById("master-pin-field").value = "";
@@ -1753,7 +1992,7 @@
 
       function renderMasterView() {
         return `
-          <div class="min-h-screen flex flex-col bg-slate-50">
+          <div class="min-h-[100dvh] flex flex-col bg-slate-50 pb-24">
             <header class="sticky top-0 z-40 bg-slate-900 text-white border-b border-slate-800">
               <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2">
                 <div class="flex items-center gap-2.5 min-w-0">
@@ -1786,7 +2025,7 @@
               </div>
             </header>
 
-            <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 space-y-6 animate-fade-up">
+            <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 space-y-6 animate-fade-in">
               <div class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
                 ${[
                   { id: "classes", label: "Manage Classes", count: state.classes.length },
@@ -1930,85 +2169,87 @@
         let uploadedHtml = existing && existing.htmlContent ? existing.htmlContent : "";
 
         document.getElementById("modal-root").innerHTML = `
-          <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-up">
-            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden">
-              <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+          <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2.5 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90dvh] flex flex-col overflow-hidden">
+              <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
                 <h3 class="text-base sm:text-lg font-extrabold text-slate-900">${existing ? "Edit Chapter" : "Upload Chapter / Note"}</h3>
                 <button onclick="window.app.closeModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 font-bold">&#10005;</button>
               </div>
 
-              <form id="chapter-modal-form" class="p-5 overflow-y-auto space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Class *</label>
-                    <select id="ch-cls" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
-                      ${state.classes.map(c => `<option value="${escapeHtml(c.name)}" ${existing && existing.className === c.name ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
-                    </select>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Subject *</label>
-                    <select id="ch-sub" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
-                      ${SUBJECTS.map(s => `<option value="${s}" ${existing && existing.subject === s ? "selected" : ""}>${s}</option>`).join("")}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Chapter Title *</label>
-                  <input id="ch-title" type="text" required value="${escapeHtml(existing ? existing.title : "")}" placeholder="e.g., Wave Optics"
-                    class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
-
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1.5">Note Format</label>
-                  <div class="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-100 border border-slate-200">
-                    <button type="button" id="btn-ch-mode-std" class="py-2 rounded-lg text-xs font-bold transition ${contentType === "standard" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}">Standard Text Editor</button>
-                    <button type="button" id="btn-ch-mode-html" class="py-2 rounded-lg text-xs font-bold transition ${contentType === "html" ? "bg-white text-violet-700 shadow-sm" : "text-slate-600"}">HTML File / Paste HTML</button>
-                  </div>
-                </div>
-
-                <div id="ch-std-fields" class="${contentType === "standard" ? "space-y-3.5" : "hidden"}">
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Key Takeaways (one per line)</label>
-                    <textarea id="ch-takeaways" rows="3" placeholder="Bullet points..."
-                      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none">${escapeHtml(existing && existing.takeaways ? existing.takeaways.join("\n") : "")}</textarea>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Detailed Notes *</label>
-                    <textarea id="ch-content" rows="5" ${contentType === "standard" ? "required" : ""} placeholder="Write chapter notes..."
-                      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none">${escapeHtml(existing ? existing.content : "")}</textarea>
-                  </div>
-                </div>
-
-                <div id="ch-html-fields" class="${contentType === "html" ? "space-y-3" : "hidden"}">
-                  <div class="p-4 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/50 space-y-3">
-                    <p class="text-xs font-bold text-violet-900 text-center">Upload your prepared HTML Note (.html / .htm)</p>
-                    <input id="ch-html-file" type="file" accept="text/html,text/plain,.html,.htm,*/*"
-                      class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-violet-600 file:text-white hover:file:bg-violet-700 cursor-pointer" />
-                    <p id="ch-html-status" class="text-xs font-semibold text-center ${uploadedHtml ? "text-emerald-700" : "text-slate-500"}">
-                      ${uploadedHtml ? "HTML loaded (" + uploadedHtml.length.toLocaleString() + " characters ready)" : "No HTML file selected yet."}
-                    </p>
-
-                    <div class="pt-3 border-t border-violet-200/80 space-y-2">
-                      <p class="text-[11px] font-extrabold uppercase tracking-wider text-violet-700 text-center">&mdash; OR Paste HTML Code Directly &mdash;</p>
-                      <textarea id="ch-html-paste" rows="5" placeholder="Paste your HTML note code here..."
-                        class="w-full px-3 py-2 rounded-xl border border-violet-200 bg-white text-xs font-mono outline-none focus:ring-2 focus:ring-violet-500">${escapeHtml(uploadedHtml)}</textarea>
-                      <button type="button" id="btn-load-pasted-ch-html"
-                        class="w-full py-2.5 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white transition">
-                        Load Pasted HTML
-                      </button>
+              <form id="chapter-modal-form" class="min-h-0 flex-1 flex flex-col overflow-hidden">
+                <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-touch p-5 space-y-4">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label class="block text-xs font-bold text-slate-700 mb-1">Class *</label>
+                      <select id="ch-cls" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
+                        ${state.classes.map(c => `<option value="${escapeHtml(c.name)}" ${existing && existing.className === c.name ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-xs font-bold text-slate-700 mb-1">Subject *</label>
+                      <select id="ch-sub" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
+                        ${SUBJECTS.map(s => `<option value="${s}" ${existing && existing.subject === s ? "selected" : ""}>${s}</option>`).join("")}
+                      </select>
                     </div>
                   </div>
+
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Chapter Title *</label>
+                    <input id="ch-title" type="text" required value="${escapeHtml(existing ? existing.title : "")}" placeholder="e.g., Wave Optics"
+                      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Note Format</label>
+                    <div class="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-100 border border-slate-200">
+                      <button type="button" id="btn-ch-mode-std" class="py-2 rounded-lg text-xs font-bold transition ${contentType === "standard" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}">Standard Text Editor</button>
+                      <button type="button" id="btn-ch-mode-html" class="py-2 rounded-lg text-xs font-bold transition ${contentType === "html" ? "bg-white text-violet-700 shadow-sm" : "text-slate-600"}">HTML File / Paste HTML</button>
+                    </div>
+                  </div>
+
+                  <div id="ch-std-fields" class="${contentType === "standard" ? "space-y-3.5" : "hidden"}">
+                    <div>
+                      <label class="block text-xs font-bold text-slate-700 mb-1">Key Takeaways (one per line)</label>
+                      <textarea id="ch-takeaways" rows="3" placeholder="Bullet points..."
+                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none">${escapeHtml(existing && existing.takeaways ? existing.takeaways.join("\n") : "")}</textarea>
+                    </div>
+                    <div>
+                      <label class="block text-xs font-bold text-slate-700 mb-1">Detailed Notes *</label>
+                      <textarea id="ch-content" rows="5" ${contentType === "standard" ? "required" : ""} placeholder="Write chapter notes..."
+                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none">${escapeHtml(existing ? existing.content : "")}</textarea>
+                    </div>
+                  </div>
+
+                  <div id="ch-html-fields" class="${contentType === "html" ? "space-y-3" : "hidden"}">
+                    <div class="p-4 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/50 space-y-3">
+                      <p class="text-xs font-bold text-violet-900 text-center">Upload your prepared HTML Note (.html / .htm)</p>
+                      <input id="ch-html-file" type="file" accept="text/html,text/plain,.html,.htm,*/*"
+                        class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-violet-600 file:text-white hover:file:bg-violet-700 cursor-pointer" />
+                      <p id="ch-html-status" class="text-xs font-semibold text-center ${uploadedHtml ? "text-emerald-700" : "text-slate-500"}">
+                        ${uploadedHtml ? "HTML loaded (" + uploadedHtml.length.toLocaleString() + " characters ready)" : "No HTML file selected yet."}
+                      </p>
+
+                      <div class="pt-3 border-t border-violet-200/80 space-y-2">
+                        <p class="text-[11px] font-extrabold uppercase tracking-wider text-violet-700 text-center">&mdash; OR Paste HTML Code Directly &mdash;</p>
+                        <textarea id="ch-html-paste" rows="5" placeholder="Paste your HTML note code here..."
+                          class="w-full px-3 py-2 rounded-xl border border-violet-200 bg-white text-xs font-mono outline-none focus:ring-2 focus:ring-violet-500">${escapeHtml(uploadedHtml)}</textarea>
+                        <button type="button" id="btn-load-pasted-ch-html"
+                          class="w-full py-2.5 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white transition">
+                          Load Pasted HTML
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Optional Reference / Video URL</label>
+                    <input id="ch-video" type="url" value="${escapeHtml(existing ? existing.videoUrl : "")}" placeholder="https://..."
+                      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none" />
+                  </div>
                 </div>
 
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Optional Reference / Video URL</label>
-                  <input id="ch-video" type="url" value="${escapeHtml(existing ? existing.videoUrl : "")}" placeholder="https://..."
-                    class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none" />
-                </div>
-
-                <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-                  <button type="button" onclick="window.app.closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100">Cancel</button>
+                <div class="px-5 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
+                  <button type="button" onclick="window.app.closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-200/70">Cancel</button>
                   <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-900 text-amber-400">
                     ${existing ? "Save Changes" : "Publish Chapter"}
                   </button>
@@ -2168,42 +2409,44 @@
         }
 
         document.getElementById("modal-root").innerHTML = `
-          <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-up">
-            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden">
-              <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+          <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full max-h-[90dvh] flex flex-col overflow-hidden">
+              <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
                 <h3 class="text-base sm:text-lg font-extrabold text-slate-900">${existing ? "Edit Exam Details" : "Create Timed MCQ Exam"}</h3>
                 <button onclick="window.app.closeModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 font-bold">&#10005;</button>
               </div>
-              <form id="exam-info-form" class="p-5 space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">MCQ-Enabled Class *</label>
-                    <select id="ex-cls" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
-                      ${mcqClasses.map(c => `<option value="${escapeHtml(c.name)}" ${existing && existing.className === c.name ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
-                    </select>
+              <form id="exam-info-form" class="min-h-0 flex-1 flex flex-col overflow-hidden">
+                <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-touch p-5 space-y-4">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label class="block text-xs font-bold text-slate-700 mb-1">MCQ-Enabled Class *</label>
+                      <select id="ex-cls" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
+                        ${mcqClasses.map(c => `<option value="${escapeHtml(c.name)}" ${existing && existing.className === c.name ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-xs font-bold text-slate-700 mb-1">Subject *</label>
+                      <select id="ex-sub" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
+                        ${SUBJECTS.map(s => `<option value="${s}" ${existing && existing.subject === s ? "selected" : ""}>${s}</option>`).join("")}
+                      </select>
+                    </div>
                   </div>
                   <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Subject *</label>
-                    <select id="ex-sub" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
-                      ${SUBJECTS.map(s => `<option value="${s}" ${existing && existing.subject === s ? "selected" : ""}>${s}</option>`).join("")}
-                    </select>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Exam Title *</label>
+                    <input id="ex-title" type="text" required value="${escapeHtml(existing ? existing.title : "")}" placeholder="e.g., Rotational Motion Timed Test"
+                      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
                   </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Duration (Minutes) *</label>
+                    <input id="ex-dur" type="number" min="1" max="240" required value="${existing ? existing.durationMinutes : 15}"
+                      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono-num outline-none" />
+                  </div>
+                  <p class="text-xs text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    Marking scheme is automatically set to <strong class="text-emerald-700">+4 Correct</strong>, <strong class="text-rose-600">-1 Wrong</strong>, <strong>0 Unattempted</strong>.
+                  </p>
                 </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Exam Title *</label>
-                  <input id="ex-title" type="text" required value="${escapeHtml(existing ? existing.title : "")}" placeholder="e.g., Rotational Motion Timed Test"
-                    class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Duration (Minutes) *</label>
-                  <input id="ex-dur" type="number" min="1" max="240" required value="${existing ? existing.durationMinutes : 15}"
-                    class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono-num outline-none" />
-                </div>
-                <p class="text-xs text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  Marking scheme is automatically set to <strong class="text-emerald-700">+4 Correct</strong>, <strong class="text-rose-600">-1 Wrong</strong>, <strong>0 Unattempted</strong>.
-                </p>
-                <div class="pt-2 flex justify-end gap-2">
-                  <button type="button" onclick="window.app.closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100">Cancel</button>
+                <div class="px-5 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2 shrink-0">
+                  <button type="button" onclick="window.app.closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-200/70">Cancel</button>
                   <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-900 text-amber-400">
                     ${existing ? "Update Exam" : "Create Exam"}
                   </button>
@@ -2279,9 +2522,9 @@
         const letters = ["A", "B", "C", "D"];
 
         document.getElementById("modal-root").innerHTML = `
-          <div class="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-up">
-            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[94vh] flex flex-col overflow-hidden">
-              <div class="px-5 py-4 bg-slate-900 text-white flex items-center justify-between gap-3">
+          <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[90dvh] flex flex-col overflow-hidden">
+              <div class="px-5 py-4 bg-slate-900 text-white flex items-center justify-between gap-3 shrink-0">
                 <div class="min-w-0">
                   <p class="text-xs text-amber-400 font-bold">${escapeHtml(exam.className)} &bull; ${escapeHtml(exam.subject)}</p>
                   <h3 class="text-base sm:text-lg font-extrabold truncate">${escapeHtml(exam.title)} (${questions.length} Qs)</h3>
@@ -2289,7 +2532,7 @@
                 <button onclick="window.app.closeModal()" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm">&#10005;</button>
               </div>
 
-              <div class="p-4 sm:p-6 overflow-y-auto space-y-6">
+              <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-touch p-4 sm:p-6 space-y-6">
                 <!-- HTML Question Paper Upload + Direct Paste Box -->
                 <div class="rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/60 p-4 sm:p-5 space-y-3">
                   <div>
@@ -2387,7 +2630,7 @@
                 <p class="text-xs sm:text-sm font-extrabold text-emerald-800">
                   &#10003; Auto-parsed ${parsedQs.length} MCQ questions from "${escapeHtml(sourceLabel)}"!
                 </p>
-                <div class="max-h-36 overflow-y-auto space-y-1.5 text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl">
+                <div class="max-h-36 overflow-y-auto scroll-touch space-y-1.5 text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl">
                   ${parsedQs.map((pq, i) => `<div><strong>Q${i + 1}.</strong> ${escapeHtml(pq.text)} <span class="text-emerald-700 font-bold">[Ans: ${letters[pq.correctIndex]}]</span></div>`).join("")}
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
@@ -2424,7 +2667,7 @@
                     <input id="omr-q-count" type="number" min="1" max="100" value="${omrCount}" class="w-20 px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-bold font-mono-num" />
                     <button type="button" id="omr-gen-btn" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">Update Grid</button>
                   </div>
-                  <div id="omr-key-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-2 max-h-44 overflow-y-auto p-1">
+                  <div id="omr-key-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-2 max-h-44 overflow-y-auto scroll-touch p-1">
                     ${Array.from({ length: omrCount }, (_, i) => `
                       <div class="flex items-center justify-between gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
                         <span class="text-xs font-bold font-mono-num text-slate-700">Q${i + 1}</span>
@@ -2558,7 +2801,7 @@
               ${filtered.length === 0 ? `
                 <div class="p-12 text-center text-sm text-slate-500">No exam submissions found yet.</div>
               ` : `
-                <div class="overflow-x-auto">
+                <div class="overflow-x-auto scroll-touch">
                   <table class="w-full text-left border-collapse min-w-[720px]">
                     <thead>
                       <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
@@ -2607,7 +2850,7 @@
       }
 
       // =========================================================================
-      // 14. EXPOSED PUBLIC HANDLERS
+      // 15. EXPOSED PUBLIC HANDLERS
       // =========================================================================
       window.app = {
         closeModal,
@@ -2636,7 +2879,7 @@
           state.studentSearch = "";
           state.view = "student-home";
           ensureHomeGuard();
-          renderApp();
+          renderApp(true);
           showToast("Welcome, " + nameInput + "!", "success");
         },
 
@@ -2652,7 +2895,7 @@
               state.studentSession = null;
               writeLocalJson(SESSION_STORAGE_KEY, null);
               state.view = "login";
-              renderApp();
+              renderApp(true);
             }
           });
         },
@@ -2660,22 +2903,22 @@
         exitMasterMode() {
           state.view = state.studentSession ? "student-home" : "login";
           if (state.view === "student-home") ensureHomeGuard();
-          renderApp();
+          renderApp(true);
         },
 
         setStudentTab(tab) {
           state.studentTab = tab;
-          renderApp();
+          renderApp(false);
         },
 
         setStudentSubjectFilter(sub) {
           state.studentSubjectFilter = sub;
-          renderApp();
+          renderApp(false);
         },
 
         setStudentSearch(val) {
           state.studentSearch = val;
-          renderApp();
+          renderApp(false);
           const el = document.getElementById("student-ch-search");
           if (el) {
             el.focus();
@@ -2687,8 +2930,7 @@
           state.activeChapterId = chapterId;
           state.view = "chapter-reader";
           pushNavState("chapter-reader");
-          renderApp();
-          window.scrollTo({ top: 0, behavior: "smooth" });
+          renderApp(true);
         },
 
         backToStudentHome() {
@@ -2696,7 +2938,7 @@
           state.lastResultView = null;
           state.view = state.studentSession ? "student-home" : "login";
           if (state.view === "student-home") ensureHomeGuard();
-          renderApp();
+          renderApp(true);
         },
 
         toggleChapterComplete(chapterId) {
@@ -2706,7 +2948,7 @@
             state.completedChapterIds.add(chapterId);
           }
           writeLocalJson(COMPLETED_STORAGE_KEY, Array.from(state.completedChapterIds));
-          renderApp();
+          renderApp(false);
         },
 
         startOrResumeExam,
@@ -2716,14 +2958,14 @@
           if (!state.examSession || state.examSession.submittedResult) return;
           state.examSession.answers[qIdx] = optIdx;
           saveCurrentExamProgressNow();
-          renderApp();
+          renderApp(false);
         },
 
         clearExamOption(qIdx) {
           if (!state.examSession || state.examSession.submittedResult) return;
           delete state.examSession.answers[qIdx];
           saveCurrentExamProgressNow();
-          renderApp();
+          renderApp(false);
         },
 
         toggleFlagQuestion(qIdx) {
@@ -2731,7 +2973,7 @@
           if (state.examSession.flagged.has(qIdx)) state.examSession.flagged.delete(qIdx);
           else state.examSession.flagged.add(qIdx);
           saveCurrentExamProgressNow();
-          renderApp();
+          renderApp(false);
         },
 
         jumpToExamQuestion(idx) {
@@ -2740,12 +2982,12 @@
           state.examSession.currentIndex = Math.max(0, Math.min(max, idx));
           state.mobilePaletteOpen = false;
           saveCurrentExamProgressNow();
-          renderApp();
+          renderApp(true);
         },
 
         toggleMobilePalette(open) {
           state.mobilePaletteOpen = Boolean(open);
-          renderApp();
+          renderApp(false);
         },
 
         promptSubmitExam() {
@@ -2764,7 +3006,7 @@
 
         setMasterTab(tab) {
           state.masterTab = tab;
-          renderApp();
+          renderApp(false);
         },
 
         async handleAddClass(e) {
@@ -2782,14 +3024,14 @@
             mcqEnabled: mcqEnabled,
             createdAt: Date.now()
           });
-          renderApp();
+          renderApp(false);
           await pushAllToCloud(false);
         },
 
         async toggleClassMcq(classId, newVal) {
           const c = state.classes.find(x => x.id === classId);
           if (c) c.mcqEnabled = Boolean(newVal);
-          renderApp();
+          renderApp(false);
           await pushAllToCloud(false);
         },
 
@@ -2801,7 +3043,7 @@
             confirmStyle: "danger",
             onConfirm: async () => {
               state.classes = state.classes.filter(c => c.id !== classId);
-              renderApp();
+              renderApp(false);
               await pushAllToCloud(false);
             }
           });
@@ -2809,7 +3051,7 @@
 
         setMasterChapterClassFilter(val) {
           state.masterChapterClassFilter = val;
-          renderApp();
+          renderApp(false);
         },
 
         openChapterFormModal,
@@ -2822,7 +3064,7 @@
             confirmStyle: "danger",
             onConfirm: async () => {
               state.chapters = state.chapters.filter(c => c.id !== chapterId);
-              renderApp();
+              renderApp(false);
               await pushAllToCloud(false);
             }
           });
@@ -2830,7 +3072,7 @@
 
         setMasterExamClassFilter(val) {
           state.masterExamClassFilter = val;
-          renderApp();
+          renderApp(false);
         },
 
         openExamFormModal,
@@ -2844,7 +3086,7 @@
             confirmStyle: "danger",
             onConfirm: async () => {
               state.exams = state.exams.filter(e => e.id !== examId);
-              renderApp();
+              renderApp(false);
               await pushAllToCloud(false);
             }
           });
@@ -2860,12 +3102,12 @@
 
         setMasterResultClassFilter(val) {
           state.masterResultClassFilter = val;
-          renderApp();
+          renderApp(false);
         },
 
         setMasterResultExamFilter(val) {
           state.masterResultExamFilter = val;
-          renderApp();
+          renderApp(false);
         },
 
         confirmDeleteResult(resultId) {
@@ -2876,7 +3118,7 @@
             confirmStyle: "danger",
             onConfirm: async () => {
               state.results = state.results.filter(r => r.id !== resultId);
-              renderApp();
+              renderApp(false);
               await pushAllToCloud(false);
             }
           });
@@ -2913,14 +3155,14 @@
       };
 
       // =========================================================================
-      // 15. BOOT APPLICATION
+      // 16. BOOT APPLICATION
       // =========================================================================
       if (state.view === "student-home") {
         ensureHomeGuard();
       } else {
         pushNavState(state.view);
       }
-      renderApp();
+      renderApp(true);
       fetchFromCloud(false);
     })();
   </script>
