@@ -2,14 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="theme-color" content="#4f46e5" />
   <title>EduMaster — Academic & Timed MCQ Exam Portal</title>
-  <!-- Tailwind CSS -->
+
+  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+
   <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
   <script>
     tailwind.config = {
       theme: {
@@ -22,11 +29,13 @@
       },
     };
   </script>
+
   <style>
     html, body {
       font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
       overflow-x: hidden;
       -webkit-tap-highlight-color: transparent;
+      overscroll-behavior-y: none;
     }
     .font-mono-num {
       font-family: 'JetBrains Mono', monospace;
@@ -37,14 +46,14 @@
       to { opacity: 1; transform: translateY(0); }
     }
     .animate-fade-up {
-      animation: fadeUp 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      animation: fadeUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
     @keyframes slideUp {
       from { transform: translateY(100%); }
       to { transform: translateY(0); }
     }
     .animate-slide-up {
-      animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      animation: slideUp 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
     @keyframes pulseDanger {
       0%, 100% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.45); }
@@ -53,11 +62,8 @@
     .timer-critical {
       animation: pulseDanger 1.1s infinite;
     }
-    /* Hide scrollbar for clean mobile horizontal tab bars */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-    /* Subtle desktop scrollbar */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #f1f5f9; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
@@ -68,7 +74,6 @@
 
   <!-- ==================== APP SHELL ROOT ==================== -->
   <div id="app-root" class="flex-1 flex flex-col min-h-screen">
-    <!-- Initial Loading Screen -->
     <div id="loading-screen" class="flex-1 flex flex-col items-center justify-center px-6 py-24 text-center">
       <div class="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200 mb-5">
         <svg class="w-7 h-7 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -77,7 +82,7 @@
         </svg>
       </div>
       <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">EduMaster Portal</h1>
-      <p class="text-sm text-slate-500 mt-1.5">Connecting to classroom & exam workspace...</p>
+      <p class="text-sm text-slate-500 mt-1.5">Loading classroom &amp; exam workspace...</p>
     </div>
   </div>
 
@@ -104,11 +109,14 @@
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // =========================================================================
-    // 1. CONSTANTS & PRE-LOADED STARTER DATA
+    // 1. CONSTANTS, STORAGE KEYS & STARTER DATA
     // =========================================================================
     const MASTER_ACCESS_CODE = "1234";
     const MARKS_CORRECT = 4;
     const MARKS_WRONG = -1;
+    const SESSION_STORAGE_KEY = "edumaster_student_session_v2";
+    const PROGRESS_STORAGE_KEY = "edumaster_exam_progress_v2";
+    const COMPLETED_STORAGE_KEY = "edumaster_completed_chapters_v2";
 
     const SUBJECTS = [
       "Physics",
@@ -139,7 +147,7 @@
           "Oxidation involves gain of oxygen or loss of hydrogen; reduction is the reverse.",
           "Corrosion and rancidity are practical examples of oxidation."
         ],
-        content: `Chemical reactions involve the breaking and making of bonds between atoms to produce new substances.\n\n1. Balancing Equations:\nEvery equation must have an equal number of atoms of each element on both reactant and product sides.\nExample: 2Mg + O₂ → 2MgO\n\n2. Types of Reactions:\n• Combination: Two or more reactants form a single product (CaO + H₂O → Ca(OH)₂).\n• Decomposition: A single compound breaks down using heat, light, or electricity.\n• Displacement: A more reactive element displaces a less reactive element (Fe + CuSO₄ → FeSO₄ + Cu).\n• Redox: Oxidation and reduction occur simultaneously.`,
+        content: "Chemical reactions involve the breaking and making of bonds between atoms to produce new substances.\n\n1. Balancing Equations:\nEvery equation must have an equal number of atoms of each element on both reactant and product sides.\nExample: 2Mg + O2 -> 2MgO\n\n2. Types of Reactions:\n- Combination: Two or more reactants form a single product (CaO + H2O -> Ca(OH)2).\n- Decomposition: A single compound breaks down using heat, light, or electricity.\n- Displacement: A more reactive element displaces a less reactive element (Fe + CuSO4 -> FeSO4 + Cu).\n- Redox: Oxidation and reduction occur simultaneously.",
         videoUrl: "https://www.khanacademy.org/science/chemistry/chemical-reactions-stoichiome",
         htmlContent: "",
         createdAt: 1700000001000
@@ -151,11 +159,11 @@
         title: "Quadratic Equations",
         contentType: "standard",
         takeaways: [
-          "Standard form: ax² + bx + c = 0 where a ≠ 0.",
-          "Quadratic Formula: x = (-b ± √(b² - 4ac)) / 2a.",
-          "Discriminant D = b² - 4ac determines the nature of roots."
+          "Standard form: ax^2 + bx + c = 0 where a != 0.",
+          "Quadratic Formula: x = (-b +/- sqrt(b^2 - 4ac)) / 2a.",
+          "Discriminant D = b^2 - 4ac determines the nature of roots."
         ],
-        content: `A quadratic equation in variable x has the form ax² + bx + c = 0 (a ≠ 0).\n\n1. Discriminant Analysis:\n• D > 0: Two distinct real roots.\n• D = 0: Two equal real roots (x = -b / 2a).\n• D < 0: No real roots.\n\n2. Factorization Method:\nSplit the middle term such that the product equals a × c and sum equals b. For x² - 5x + 6 = 0, factors are (x - 2)(x - 3) = 0, giving roots 2 and 3.`,
+        content: "A quadratic equation in variable x has the form ax^2 + bx + c = 0 (a != 0).\n\n1. Discriminant Analysis:\n- D > 0: Two distinct real roots.\n- D = 0: Two equal real roots (x = -b / 2a).\n- D < 0: No real roots.\n\n2. Factorization Method:\nSplit the middle term such that the product equals a * c and sum equals b. For x^2 - 5x + 6 = 0, factors are (x - 2)(x - 3) = 0, giving roots 2 and 3.",
         videoUrl: "",
         htmlContent: "",
         createdAt: 1700000002000
@@ -168,11 +176,11 @@
         contentType: "standard",
         takeaways: [
           "First Law: Law of Inertia — mass is the quantitative measure of inertia.",
-          "Second Law: F = dp/dt = ma (for constant mass). Impulse J = FΔt = Δp.",
+          "Second Law: F = dp/dt = ma (for constant mass). Impulse J = F*dt = dp.",
           "Third Law: Action and reaction are equal, opposite, and act on different bodies.",
-          "Limiting static friction f_max = μ_s N."
+          "Limiting static friction f_max = mu_s * N."
         ],
-        content: `Newton's Laws of Motion connect forces with the resulting motion of bodies.\n\n1. First Law (Inertia):\nA body stays in rest or uniform straight-line motion unless acted upon by an unbalanced external force.\n\n2. Second Law & Momentum:\nLinear momentum p = mv. Net force equals rate of change of momentum: F = dp/dt. In an isolated system with zero net external force, total momentum is conserved.\n\n3. Friction & Banked Roads:\nFriction opposes relative motion between surfaces. On a banked road of angle θ, optimum speed without friction is v = √(rg tan θ).`,
+        content: "Newton's Laws of Motion connect forces with the resulting motion of bodies.\n\n1. First Law (Inertia):\nA body stays in rest or uniform straight-line motion unless acted upon by an unbalanced external force.\n\n2. Second Law & Momentum:\nLinear momentum p = mv. Net force equals rate of change of momentum: F = dp/dt. In an isolated system with zero net external force, total momentum is conserved.\n\n3. Friction & Banked Roads:\nFriction opposes relative motion between surfaces. On a banked road of angle theta, optimum speed without friction is v = sqrt(rg tan theta).",
         videoUrl: "https://www.khanacademy.org/science/physics/forces-newtons-laws",
         htmlContent: "",
         createdAt: 1700000003000
@@ -184,12 +192,12 @@
         title: "Structure of Atom",
         contentType: "standard",
         takeaways: [
-          "Bohr's quantization condition: mvr = nh / 2π.",
-          "de Broglie wavelength: λ = h / mv.",
-          "Heisenberg's Uncertainty Principle: Δx · Δp ≥ h / 4π.",
+          "Bohr's quantization condition: mvr = nh / 2pi.",
+          "de Broglie wavelength: lambda = h / mv.",
+          "Heisenberg's Uncertainty Principle: dx * dp >= h / 4pi.",
           "Four quantum numbers (n, l, m_l, m_s) uniquely describe every electron."
         ],
-        content: `The quantum mechanical model describes electrons as wave functions (orbitals) around the nucleus.\n\n1. Bohr's Model:\nElectrons occupy discrete energy levels. Transition between levels emits or absorbs a photon of energy ΔE = hν.\n\n2. Quantum Numbers:\n• Principal (n): Shell size & energy.\n• Azimuthal (l): Subshell shape (s, p, d, f).\n• Magnetic (m_l): Orbital orientation.\n• Spin (m_s): +1/2 or -1/2.\nOrbitals fill following Aufbau Principle, Pauli Exclusion Principle, and Hund's Rule.`,
+        content: "The quantum mechanical model describes electrons as wave functions (orbitals) around the nucleus.\n\n1. Bohr's Model:\nElectrons occupy discrete energy levels. Transition between levels emits or absorbs a photon of energy dE = hv.\n\n2. Quantum Numbers:\n- Principal (n): Shell size & energy.\n- Azimuthal (l): Subshell shape (s, p, d, f).\n- Magnetic (m_l): Orbital orientation.\n- Spin (m_s): +1/2 or -1/2.\nOrbitals fill following Aufbau Principle, Pauli Exclusion Principle, and Hund's Rule.",
         videoUrl: "",
         htmlContent: "",
         createdAt: 1700000004000
@@ -201,12 +209,12 @@
         title: "Electrostatics: Electric Charges & Fields",
         contentType: "standard",
         takeaways: [
-          "Charge is quantized (q = ±ne) and conserved.",
-          "Coulomb's Law: F = (1 / 4πε₀) · (q₁q₂ / r²).",
-          "Gauss's Law: Φ = ∮ E · dA = q_enclosed / ε₀.",
+          "Charge is quantized (q = +/-ne) and conserved.",
+          "Coulomb's Law: F = (1 / 4pi*e0) * (q1*q2 / r^2).",
+          "Gauss's Law: Flux = q_enclosed / e0.",
           "Electric field inside a hollow conducting shell is always zero."
         ],
-        content: `Electrostatics studies forces, fields, and potentials created by stationary electric charges.\n\n1. Coulomb's Law:\nElectrostatic force between two point charges is directly proportional to product of charges and inversely proportional to square of separation distance.\n\n2. Electric Dipole:\nTwo equal and opposite charges separated by distance 2a have dipole moment p = q(2a). Torque in uniform field E is τ = pE sin θ.\n\n3. Gauss's Law Results:\n• Infinite line charge: E = λ / (2πε₀r)\n• Infinite plane sheet: E = σ / (2ε₀)\n• Thin spherical shell: E = 0 inside; E = kQ / r² outside.`,
+        content: "Electrostatics studies forces, fields, and potentials created by stationary electric charges.\n\n1. Coulomb's Law:\nElectrostatic force between two point charges is directly proportional to product of charges and inversely proportional to square of separation distance.\n\n2. Electric Dipole:\nTwo equal and opposite charges separated by distance 2a have dipole moment p = q(2a). Torque in uniform field E is tau = pE sin(theta).\n\n3. Gauss's Law Results:\n- Infinite line charge: E = lambda / (2pi*e0*r)\n- Infinite plane sheet: E = sigma / (2*e0)\n- Thin spherical shell: E = 0 inside; E = kQ / r^2 outside.",
         videoUrl: "https://www.khanacademy.org/science/physics/electric-charge-electric-force-and-voltage",
         htmlContent: "",
         createdAt: 1700000005000
@@ -218,11 +226,11 @@
         title: "Continuity and Differentiability",
         contentType: "standard",
         takeaways: [
-          "f(x) is continuous at c if lim(x→c) f(x) = f(c).",
+          "f(x) is continuous at c if lim(x->c) f(x) = f(c).",
           "Differentiability implies continuity, but continuity does not guarantee differentiability.",
-          "Chain Rule: d/dx [f(g(x))] = f'(g(x)) · g'(x)."
+          "Chain Rule: d/dx [f(g(x))] = f'(g(x)) * g'(x)."
         ],
-        content: `Continuity and differentiability form the foundation of differential calculus.\n\n1. Continuity:\nLeft-hand limit, right-hand limit, and f(c) must all exist and be equal.\n\n2. Differentiability:\nf'(c) = lim(h→0) [f(c+h) - f(c)] / h must exist finitely. Functions with sharp corners like |x| at x = 0 are continuous but not differentiable.\n\n3. Core Rules:\nProduct rule, Quotient rule, Chain rule, Implicit differentiation, and Parametric differentiation: dy/dx = (dy/dt) / (dx/dt).`,
+        content: "Continuity and differentiability form the foundation of differential calculus.\n\n1. Continuity:\nLeft-hand limit, right-hand limit, and f(c) must all exist and be equal.\n\n2. Differentiability:\nf'(c) = lim(h->0) [f(c+h) - f(c)] / h must exist finitely. Functions with sharp corners like |x| at x = 0 are continuous but not differentiable.\n\n3. Core Rules:\nProduct rule, Quotient rule, Chain rule, Implicit differentiation, and Parametric differentiation.",
         videoUrl: "",
         htmlContent: "",
         createdAt: 1700000006000
@@ -245,7 +253,7 @@
             text: "A body of mass 5 kg is acted upon by a net force of 20 N. What is the acceleration produced?",
             options: ["2 m/s²", "4 m/s²", "5 m/s²", "100 m/s²"],
             correctIndex: 1,
-            explanation: "By Newton's Second Law, F = ma ⇒ a = F / m = 20 / 5 = 4 m/s²."
+            explanation: "By Newton's Second Law, F = ma => a = F / m = 20 / 5 = 4 m/s²."
           },
           {
             id: "q11-2",
@@ -256,10 +264,10 @@
           },
           {
             id: "q11-3",
-            text: "The area under a Force–Time (F–t) graph represents:",
+            text: "The area under a Force-Time (F-t) graph represents:",
             options: ["Work done", "Power", "Impulse (Change in momentum)", "Kinetic energy"],
             correctIndex: 2,
-            explanation: "Impulse J = ∫F dt = Δp, equal to the area under the F–t curve."
+            explanation: "Impulse J = Integral(F dt) = change in momentum, equal to the area under the F-t curve."
           },
           {
             id: "q11-4",
@@ -275,10 +283,10 @@
           },
           {
             id: "q11-5",
-            text: "A 2 kg block rests on a horizontal floor with μ_s = 0.4 (g = 10 m/s²). What is the maximum static friction force?",
+            text: "A 2 kg block rests on a horizontal floor with coefficient of static friction 0.4 (g = 10 m/s²). What is the maximum static friction force?",
             options: ["4 N", "8 N", "12 N", "20 N"],
             correctIndex: 1,
-            explanation: "f_max = μ_s × N = μ_s × mg = 0.4 × 2 × 10 = 8 N."
+            explanation: "f_max = mu_s * N = mu_s * mg = 0.4 * 2 * 10 = 8 N."
           }
         ]
       },
@@ -297,7 +305,7 @@
             text: "If the separation between two point charges is doubled, the electrostatic force between them becomes:",
             options: ["Half", "Double", "One-fourth", "Four times"],
             correctIndex: 2,
-            explanation: "By Coulomb's Law, F ∝ 1/r². Doubling r makes F = 1/(2)² = 1/4 of its original value."
+            explanation: "By Coulomb's Law, F is inversely proportional to r². Doubling r makes F = 1/4 of its original value."
           },
           {
             id: "q12-2",
@@ -311,14 +319,14 @@
             text: "The SI unit of electric flux is:",
             options: ["N·m²/C", "N·C/m²", "V/m", "C/m²"],
             correctIndex: 0,
-            explanation: "Φ = E · A, giving units (N/C)·m² = N·m²/C (also equivalent to V·m)."
+            explanation: "Flux = E * A, giving units (N/C)*m² = N·m²/C."
           },
           {
             id: "q12-4",
             text: "Torque on an electric dipole in a uniform electric field E is maximum when the angle between p and E is:",
             options: ["0°", "45°", "90°", "180°"],
             correctIndex: 2,
-            explanation: "τ = pE sin θ is maximum when sin θ = 1, i.e., θ = 90°."
+            explanation: "Torque = pE sin(theta) is maximum when sin(theta) = 1, i.e., theta = 90°."
           },
           {
             id: "q12-5",
@@ -330,16 +338,45 @@
               "Exact location of charge inside the surface"
             ],
             correctIndex: 1,
-            explanation: "Gauss's Law states Φ = q_enclosed / ε₀, depending strictly on net enclosed charge."
+            explanation: "Gauss's Law states Flux = q_enclosed / e0, depending strictly on net enclosed charge."
           }
         ]
       }
     ];
 
     // =========================================================================
-    // 2. APPLICATION STATE & FIREBASE REFS
+    // 2. SYNCHRONOUS LOCAL STORAGE HELPERS (FOR INSTANT BOOT & ANDROID WEBVIEW)
     // =========================================================================
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'edumaster-portal-v2';
+    function readLocalJson(key, fallback) {
+      try {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) return fallback;
+        return JSON.parse(raw);
+      } catch (e) {
+        return fallback;
+      }
+    }
+
+    function writeLocalJson(key, val) {
+      try {
+        if (val === null || val === undefined) {
+          window.localStorage.removeItem(key);
+        } else {
+          window.localStorage.setItem(key, JSON.stringify(val));
+        }
+      } catch (e) {
+        // Ignore storage quota / private mode errors
+      }
+    }
+
+    const restoredSession = readLocalJson(SESSION_STORAGE_KEY, null);
+    const restoredProgress = readLocalJson(PROGRESS_STORAGE_KEY, {});
+    const restoredCompleted = readLocalJson(COMPLETED_STORAGE_KEY, []);
+
+    // =========================================================================
+    // 3. APPLICATION STATE & FIREBASE REFS
+    // =========================================================================
+    const appId = typeof __app_id !== "undefined" ? __app_id : "edumaster-portal-v2";
     let db = null;
     let auth = null;
     let currentUser = null;
@@ -347,77 +384,68 @@
 
     const state = {
       ready: false,
-      // Views: 'login' | 'student-home' | 'chapter-reader' | 'exam-runner' | 'exam-result' | 'master'
-      view: 'login',
+      view: restoredSession && restoredSession.name && restoredSession.className ? "student-home" : "login",
       isMasterAuth: false,
+      studentSession: restoredSession && restoredSession.name && restoredSession.className ? restoredSession : null,
 
-      // Logged-in Student Identity (uneditable once logged in)
-      studentSession: null, // { name: string, className: string }
-
-      // Student UI state
-      studentTab: 'chapters', // 'chapters' | 'exams'
-      studentSubjectFilter: 'All',
-      studentSearch: '',
+      studentTab: "chapters",
+      studentSubjectFilter: "All",
+      studentSearch: "",
       activeChapterId: null,
 
-      // Master UI state
-      masterTab: 'classes', // 'classes' | 'chapters' | 'exams' | 'results'
-      masterChapterClassFilter: 'All',
-      masterExamClassFilter: 'All',
-      masterResultClassFilter: 'All',
-      masterResultExamFilter: 'All',
+      masterTab: "classes",
+      masterChapterClassFilter: "All",
+      masterExamClassFilter: "All",
+      masterResultClassFilter: "All",
+      masterResultExamFilter: "All",
 
-      // Collections (synced with Firestore)
-      classes: [],
-      chapters: [],
-      exams: [],
+      classes: structuredClone(STARTER_CLASSES),
+      chapters: structuredClone(STARTER_CHAPTERS),
+      exams: structuredClone(STARTER_EXAMS),
       results: [],
-      completedChapterIds: new Set(),
+      completedChapterIds: new Set(Array.isArray(restoredCompleted) ? restoredCompleted : []),
+      savedProgressMap: restoredProgress && typeof restoredProgress === "object" ? restoredProgress : {},
 
-      // Saved in-progress exams keyed by sanitized (name + class + examId)
-      savedProgressMap: {}, // { [key]: { examId, currentIndex, answers, flaggedArr, remainingSeconds, updatedAt } }
-
-      // Active Exam Session
-      examSession: null, // { exam, progressKey, currentIndex, answers: {}, flagged: Set, remainingSeconds, totalSeconds, submittedResult: null }
+      examSession: null,
       timerInterval: null,
       mobilePaletteOpen: false,
-      lastResultView: null // { exam, answers, resultRecord }
+      lastResultView: null
     };
 
     // =========================================================================
-    // 3. UTILITIES & HELPERS
+    // 4. UTILITIES & UI HELPERS
     // =========================================================================
     function escapeHtml(str) {
-      if (str === null || str === undefined) return '';
+      if (str === null || str === undefined) return "";
       return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     }
 
     function formatTime(totalSeconds) {
       const s = Math.max(0, Math.floor(totalSeconds));
       const m = Math.floor(s / 60);
       const sec = s % 60;
-      return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+      return String(m).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
     }
 
     function formatDate(ts) {
-      if (!ts) return 'Just now';
-      return new Date(ts).toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+      if (!ts) return "Just now";
+      return new Date(ts).toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
       });
     }
 
     function makeProgressKey(studentName, className, examId) {
-      const raw = `${(studentName || '').trim().toLowerCase()}__${(className || '').trim().toLowerCase()}__${examId}`;
-      return raw.replace(/[^a-z0-9_-]/g, '_').slice(0, 120);
+      const raw = (studentName || "").trim().toLowerCase() + "__" + (className || "").trim().toLowerCase() + "__" + examId;
+      return raw.replace(/[^a-z0-9_-]/g, "_").slice(0, 120);
     }
 
     function getStudentClassObj() {
@@ -425,34 +453,36 @@
       return state.classes.find(c => c.name === state.studentSession.className) || null;
     }
 
-    function showToast(message, type = 'info') {
-      const container = document.getElementById('toast-container');
+    function showToast(message, type = "info") {
+      const container = document.getElementById("toast-container");
+      if (!container) return;
       const palette = {
-        success: 'bg-emerald-600 text-white border-emerald-700',
-        error: 'bg-rose-600 text-white border-rose-700',
-        warning: 'bg-amber-500 text-slate-950 border-amber-600',
-        info: 'bg-slate-900 text-white border-slate-800'
+        success: "bg-emerald-600 text-white border-emerald-700",
+        error: "bg-rose-600 text-white border-rose-700",
+        warning: "bg-amber-500 text-slate-950 border-amber-600",
+        info: "bg-slate-900 text-white border-slate-800"
       };
-      const el = document.createElement('div');
-      el.className = `pointer-events-auto px-4 py-3 rounded-2xl shadow-xl border text-sm font-semibold animate-fade-up ${palette[type] || palette.info}`;
+      const el = document.createElement("div");
+      el.className = "pointer-events-auto px-4 py-3 rounded-2xl shadow-xl border text-sm font-semibold animate-fade-up " + (palette[type] || palette.info);
       el.textContent = message;
       container.appendChild(el);
       setTimeout(() => {
-        el.style.opacity = '0';
-        el.style.transition = 'opacity 0.25s ease';
+        el.style.opacity = "0";
+        el.style.transition = "opacity 0.25s ease";
         setTimeout(() => el.remove(), 260);
       }, 3200);
     }
 
     function closeModal() {
-      document.getElementById('modal-root').innerHTML = '';
+      const root = document.getElementById("modal-root");
+      if (root) root.innerHTML = "";
     }
 
-    function showConfirmModal({ title, message, confirmText = 'Confirm', confirmStyle = 'danger', onConfirm }) {
-      const btnStyle = confirmStyle === 'danger'
-        ? 'bg-rose-600 hover:bg-rose-700 text-white'
-        : 'bg-indigo-600 hover:bg-indigo-700 text-white';
-      document.getElementById('modal-root').innerHTML = `
+    function showConfirmModal({ title, message, confirmText = "Confirm", confirmStyle = "danger", onConfirm }) {
+      const btnStyle = confirmStyle === "danger"
+        ? "bg-rose-600 hover:bg-rose-700 text-white"
+        : "bg-indigo-600 hover:bg-indigo-700 text-white";
+      document.getElementById("modal-root").innerHTML = `
         <div class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-up">
           <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
             <h3 class="text-lg font-bold text-slate-900">${escapeHtml(title)}</h3>
@@ -464,17 +494,17 @@
           </div>
         </div>
       `;
-      document.getElementById('cfm-cancel').onclick = closeModal;
-      document.getElementById('cfm-ok').onclick = () => {
+      document.getElementById("cfm-cancel").onclick = closeModal;
+      document.getElementById("cfm-ok").onclick = () => {
         closeModal();
         if (onConfirm) onConfirm();
       };
     }
 
-    function downloadTextFile(filename, content, mime = 'text/html;charset=utf-8') {
+    function downloadTextFile(filename, content, mime = "text/csv;charset=utf-8") {
       const blob = new Blob([content], { type: mime });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = filename;
       document.body.appendChild(a);
@@ -484,61 +514,104 @@
     }
 
     // =========================================================================
-    // 4. HISTORY API — BROWSER BACK BUTTON INTERCEPTION
+    // 5. BULLETPROOF BACK-BUTTON & ANDROID WEBVIEW GUARD
     // =========================================================================
-    function pushNavState(viewName) {
+    function pushNavState(viewName, extra = {}) {
       try {
-        window.history.pushState({ view: viewName, ts: Date.now() }, '', '');
+        window.history.pushState({ view: viewName, ...extra, ts: Date.now() }, "", "");
       } catch (e) {
-        // Ignore in restricted iframe origins if pushState throws
+        // Ignore in restricted iframe origins
       }
     }
 
-    window.addEventListener('popstate', () => {
-      // If a modal is open, just close it
-      const modalRoot = document.getElementById('modal-root');
-      if (modalRoot && modalRoot.innerHTML.trim() !== '') {
+    function ensureHomeGuard() {
+      pushNavState("home", { guard: true });
+    }
+
+    function handleBackNavigation() {
+      // 1. Close open modal first
+      const modalRoot = document.getElementById("modal-root");
+      if (modalRoot && modalRoot.innerHTML.trim() !== "") {
         closeModal();
         pushNavState(state.view);
-        return;
+        return true;
       }
 
-      // If student is inside an active exam, pause & save progress and return to Home Page
-      if (state.view === 'exam-runner' && state.examSession) {
+      // 2. Close mobile question palette drawer if open
+      if (state.mobilePaletteOpen) {
+        state.mobilePaletteOpen = false;
+        renderApp();
+        pushNavState("exam-runner");
+        return true;
+      }
+
+      // 3. Active Timed Exam -> Pause, Save Progress & Return to Home
+      if (state.view === "exam-runner" && state.examSession) {
         pauseAndReturnHome(true);
-        return;
+        return true;
       }
 
-      // If student is in Chapter Reader or Exam Results, return cleanly to Home Page
-      if (state.view === 'chapter-reader' || state.view === 'exam-result') {
+      // 4. Chapter Reader or Exam Result -> Return to Home
+      if (state.view === "chapter-reader" || state.view === "exam-result") {
         state.activeChapterId = null;
         state.lastResultView = null;
-        state.view = state.studentSession ? 'student-home' : 'login';
+        state.view = state.studentSession ? "student-home" : "login";
         renderApp();
-        return;
+        if (state.view === "student-home") ensureHomeGuard();
+        return true;
       }
 
-      // If on Student Home, prevent accidental site exit by re-pushing home state
-      if (state.view === 'student-home') {
-        pushNavState('student-home');
-        showToast("Use the Logout button to switch student or exit.", "info");
+      // 5. Master Panel -> Return to Student Home or Login
+      if (state.view === "master") {
+        state.view = state.studentSession ? "student-home" : "login";
+        renderApp();
+        if (state.view === "student-home") ensureHomeGuard();
+        return true;
+      }
+
+      // 6. Student Home -> Guard against accidental app exit or showing Login
+      if (state.view === "student-home") {
+        ensureHomeGuard();
+        showToast("You are on the Home screen. Tap Logout to switch student.", "info");
+        return true;
+      }
+
+      return false;
+    }
+
+    // Expose globally for Android WebView wrappers
+    window.handleAndroidBack = () => handleBackNavigation();
+
+    window.addEventListener("popstate", () => {
+      handleBackNavigation();
+    });
+
+    // Auto-save active exam progress when app goes to background or closes
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden" && state.examSession && !state.examSession.submittedResult) {
+        saveCurrentExamProgressNow();
+      }
+    });
+
+    window.addEventListener("pagehide", () => {
+      if (state.examSession && !state.examSession.submittedResult) {
+        saveCurrentExamProgressNow();
       }
     });
 
     // =========================================================================
-    // 5. FIREBASE INITIALIZATION, AUTH & REAL-TIME LISTENERS
+    // 6. FIREBASE INITIALIZATION, AUTH & REAL-TIME LISTENERS
     // =========================================================================
     async function initFirebase() {
       try {
-        const configStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
-        if (!configStr) throw new Error("No Firebase config; using local session mode.");
-        const firebaseConfig = typeof configStr === 'string' ? JSON.parse(configStr) : configStr;
+        const configStr = typeof __firebase_config !== "undefined" ? __firebase_config : null;
+        if (!configStr) throw new Error("No Firebase config; using local mode.");
+        const firebaseConfig = typeof configStr === "string" ? JSON.parse(configStr) : configStr;
         const fbApp = initializeApp(firebaseConfig);
         auth = getAuth(fbApp);
         db = getFirestore(fbApp);
 
-        // RULE 3: Authenticate FIRST before any Firestore query
-        const initialToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const initialToken = typeof __initial_auth_token !== "undefined" ? __initial_auth_token : null;
         if (initialToken) {
           const cred = await signInWithCustomToken(auth, initialToken);
           currentUser = cred.user;
@@ -549,52 +622,52 @@
 
         useCloud = true;
         await seedDatabaseIfEmpty();
-        await loadPrivateSessionAndProgress();
+        await syncPrivateSessionFromCloud();
         attachFirestoreListeners();
       } catch (err) {
-        console.warn("Running in local in-memory mode:", err);
+        console.warn("Running in local mode:", err);
         useCloud = false;
-        state.classes = structuredClone(STARTER_CLASSES);
-        state.chapters = structuredClone(STARTER_CHAPTERS);
-        state.exams = structuredClone(STARTER_EXAMS);
-        state.results = [];
         finishLoading();
       }
     }
 
     async function seedDatabaseIfEmpty() {
       if (!currentUser || !db) return;
-      const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'seedV2');
+      const metaRef = doc(db, "artifacts", appId, "public", "data", "meta", "seedV2");
       const snap = await getDoc(metaRef);
       if (snap.exists()) return;
 
       await setDoc(metaRef, { seeded: true, seededAt: Date.now() });
 
       for (const cls of STARTER_CLASSES) {
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'classes', cls.id), cls);
+        await setDoc(doc(db, "artifacts", appId, "public", "data", "classes", cls.id), cls);
       }
       for (const ch of STARTER_CHAPTERS) {
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'chapters', ch.id), ch);
+        await setDoc(doc(db, "artifacts", appId, "public", "data", "chapters", ch.id), ch);
       }
       for (const ex of STARTER_EXAMS) {
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'exams', ex.id), ex);
+        await setDoc(doc(db, "artifacts", appId, "public", "data", "exams", ex.id), ex);
       }
     }
 
-    async function loadPrivateSessionAndProgress() {
+    async function syncPrivateSessionFromCloud() {
       if (!currentUser || !db) return;
       try {
-        const sessRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'studentSession');
-        const sessSnap = await getDoc(sessRef);
-        if (sessSnap.exists() && sessSnap.data().name && sessSnap.data().className) {
-          state.studentSession = {
-            name: sessSnap.data().name,
-            className: sessSnap.data().className
-          };
-          state.view = 'student-home';
+        if (!state.studentSession) {
+          const sessRef = doc(db, "artifacts", appId, "users", currentUser.uid, "profile", "studentSession");
+          const sessSnap = await getDoc(sessRef);
+          if (sessSnap.exists() && sessSnap.data().name && sessSnap.data().className) {
+            state.studentSession = {
+              name: sessSnap.data().name,
+              className: sessSnap.data().className,
+              loggedInAt: sessSnap.data().loggedInAt || Date.now()
+            };
+            writeLocalJson(SESSION_STORAGE_KEY, state.studentSession);
+            state.view = "student-home";
+          }
         }
       } catch (e) {
-        console.warn("Could not restore student session:", e);
+        console.warn("Could not restore cloud student session:", e);
       }
     }
 
@@ -605,17 +678,15 @@
         if (!state.ready && flags.classes && flags.chapters && flags.exams && flags.results) {
           finishLoading();
         } else if (state.ready) {
-          // Do not interrupt active typing in modal forms; only re-render main view if no modal open
-          const modalOpen = document.getElementById('modal-root')?.innerHTML.trim() !== '';
-          if (!modalOpen && state.view !== 'exam-runner') {
+          const modalOpen = document.getElementById("modal-root")?.innerHTML.trim() !== "";
+          if (!modalOpen && state.view !== "exam-runner") {
             renderApp();
           }
         }
       };
 
-      // 1. Classes
       onSnapshot(
-        collection(db, 'artifacts', appId, 'public', 'data', 'classes'),
+        collection(db, "artifacts", appId, "public", "data", "classes"),
         (snap) => {
           state.classes = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
@@ -626,9 +697,8 @@
         (err) => { console.error("Classes sync error:", err); }
       );
 
-      // 2. Chapters
       onSnapshot(
-        collection(db, 'artifacts', appId, 'public', 'data', 'chapters'),
+        collection(db, "artifacts", appId, "public", "data", "chapters"),
         (snap) => {
           state.chapters = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
@@ -639,9 +709,8 @@
         (err) => { console.error("Chapters sync error:", err); }
       );
 
-      // 3. Exams
       onSnapshot(
-        collection(db, 'artifacts', appId, 'public', 'data', 'exams'),
+        collection(db, "artifacts", appId, "public", "data", "exams"),
         (snap) => {
           state.exams = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
@@ -652,9 +721,8 @@
         (err) => { console.error("Exams sync error:", err); }
       );
 
-      // 4. Results
       onSnapshot(
-        collection(db, 'artifacts', appId, 'public', 'data', 'results'),
+        collection(db, "artifacts", appId, "public", "data", "results"),
         (snap) => {
           state.results = snap.docs
             .map(d => ({ id: d.id, ...d.data() }))
@@ -665,30 +733,32 @@
         (err) => { console.error("Results sync error:", err); }
       );
 
-      // 5. Private Completed Chapters
       onSnapshot(
-        doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'completedChapters'),
+        doc(db, "artifacts", appId, "users", currentUser.uid, "profile", "completedChapters"),
         (snap) => {
           if (snap.exists() && Array.isArray(snap.data().ids)) {
             state.completedChapterIds = new Set(snap.data().ids);
-          } else {
-            state.completedChapterIds = new Set();
+            writeLocalJson(COMPLETED_STORAGE_KEY, snap.data().ids);
           }
-          if (state.ready && state.view === 'student-home') renderApp();
+          if (state.ready && state.view === "student-home") renderApp();
         },
         (err) => { console.error("Completed chapters sync error:", err); }
       );
 
-      // 6. Private Saved In-Progress Exams
       onSnapshot(
-        collection(db, 'artifacts', appId, 'users', currentUser.uid, 'examProgress'),
+        collection(db, "artifacts", appId, "users", currentUser.uid, "examProgress"),
         (snap) => {
-          const map = {};
+          const merged = { ...state.savedProgressMap };
           snap.docs.forEach(d => {
-            map[d.id] = d.data();
+            const cloudItem = d.data();
+            const localItem = merged[d.id];
+            if (!localItem || (cloudItem.updatedAt || 0) >= (localItem.updatedAt || 0)) {
+              merged[d.id] = cloudItem;
+            }
           });
-          state.savedProgressMap = map;
-          if (state.ready && state.view === 'student-home') renderApp();
+          state.savedProgressMap = merged;
+          writeLocalJson(PROGRESS_STORAGE_KEY, merged);
+          if (state.ready && state.view === "student-home") renderApp();
         },
         (err) => { console.error("Exam progress sync error:", err); }
       );
@@ -696,30 +766,40 @@
 
     function finishLoading() {
       state.ready = true;
-      pushNavState(state.view);
+      if (state.view === "student-home") {
+        ensureHomeGuard();
+      } else {
+        pushNavState(state.view);
+      }
       renderApp();
     }
 
     // =========================================================================
-    // 6. PERSISTENCE HELPERS (FIRESTORE + LOCAL FALLBACK)
+    // 7. PERSISTENCE HELPERS (LOCALSTORAGE + FIRESTORE)
     // =========================================================================
     async function persistStudentSession(sessionObj) {
       state.studentSession = sessionObj;
+      writeLocalJson(SESSION_STORAGE_KEY, sessionObj);
       if (useCloud && currentUser) {
-        const ref = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'studentSession');
-        if (sessionObj) {
-          await setDoc(ref, { ...sessionObj, updatedAt: Date.now() });
-        } else {
-          await deleteDoc(ref);
+        try {
+          const ref = doc(db, "artifacts", appId, "users", currentUser.uid, "profile", "studentSession");
+          if (sessionObj) {
+            await setDoc(ref, { ...sessionObj, updatedAt: Date.now() });
+          } else {
+            await deleteDoc(ref);
+          }
+        } catch (err) {
+          console.warn("Session cloud sync warning:", err);
         }
       }
     }
 
     async function persistExamProgress(progressKey, payload) {
       state.savedProgressMap[progressKey] = payload;
+      writeLocalJson(PROGRESS_STORAGE_KEY, state.savedProgressMap);
       if (useCloud && currentUser) {
         try {
-          const ref = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'examProgress', progressKey);
+          const ref = doc(db, "artifacts", appId, "users", currentUser.uid, "examProgress", progressKey);
           await setDoc(ref, payload);
         } catch (err) {
           console.warn("Progress cloud save warning:", err);
@@ -729,9 +809,10 @@
 
     async function clearExamProgress(progressKey) {
       delete state.savedProgressMap[progressKey];
+      writeLocalJson(PROGRESS_STORAGE_KEY, state.savedProgressMap);
       if (useCloud && currentUser) {
         try {
-          await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'examProgress', progressKey));
+          await deleteDoc(doc(db, "artifacts", appId, "users", currentUser.uid, "examProgress", progressKey));
         } catch (err) {
           console.warn("Progress clear warning:", err);
         }
@@ -740,19 +821,19 @@
 
     async function saveClassToStore(classObj) {
       if (useCloud && currentUser) {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'classes'), {
+        await addDoc(collection(db, "artifacts", appId, "public", "data", "classes"), {
           ...classObj,
           createdAt: Date.now()
         });
       } else {
-        state.classes.push({ id: 'cls-' + Date.now(), ...classObj, createdAt: Date.now() });
+        state.classes.push({ id: "cls-" + Date.now(), ...classObj, createdAt: Date.now() });
         renderApp();
       }
     }
 
     async function toggleClassMcqInStore(classId, allowMcq) {
       if (useCloud && currentUser) {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'classes', classId), { allowMcq });
+        await updateDoc(doc(db, "artifacts", appId, "public", "data", "classes", classId), { allowMcq });
       } else {
         const c = state.classes.find(x => x.id === classId);
         if (c) c.allowMcq = allowMcq;
@@ -762,7 +843,7 @@
 
     async function deleteClassFromStore(classId) {
       if (useCloud && currentUser) {
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'classes', classId));
+        await deleteDoc(doc(db, "artifacts", appId, "public", "data", "classes", classId));
       } else {
         state.classes = state.classes.filter(x => x.id !== classId);
         renderApp();
@@ -772,16 +853,16 @@
     async function saveChapterToStore(data, editId = null) {
       if (useCloud && currentUser) {
         if (editId) {
-          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'chapters', editId), data);
+          await updateDoc(doc(db, "artifacts", appId, "public", "data", "chapters", editId), data);
         } else {
-          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'chapters'), { ...data, createdAt: Date.now() });
+          await addDoc(collection(db, "artifacts", appId, "public", "data", "chapters"), { ...data, createdAt: Date.now() });
         }
       } else {
         if (editId) {
           const i = state.chapters.findIndex(c => c.id === editId);
           if (i !== -1) state.chapters[i] = { ...state.chapters[i], ...data };
         } else {
-          state.chapters.unshift({ id: 'ch-' + Date.now(), ...data, createdAt: Date.now() });
+          state.chapters.unshift({ id: "ch-" + Date.now(), ...data, createdAt: Date.now() });
         }
         renderApp();
       }
@@ -789,7 +870,7 @@
 
     async function deleteChapterFromStore(chapterId) {
       if (useCloud && currentUser) {
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'chapters', chapterId));
+        await deleteDoc(doc(db, "artifacts", appId, "public", "data", "chapters", chapterId));
       } else {
         state.chapters = state.chapters.filter(c => c.id !== chapterId);
         renderApp();
@@ -799,9 +880,9 @@
     async function saveExamToStore(data, editId = null) {
       if (useCloud && currentUser) {
         if (editId) {
-          await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'exams', editId), data);
+          await updateDoc(doc(db, "artifacts", appId, "public", "data", "exams", editId), data);
         } else {
-          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'exams'), {
+          await addDoc(collection(db, "artifacts", appId, "public", "data", "exams"), {
             ...data,
             questions: data.questions || [],
             createdAt: Date.now()
@@ -813,7 +894,7 @@
           if (i !== -1) state.exams[i] = { ...state.exams[i], ...data };
         } else {
           state.exams.unshift({
-            id: 'ex-' + Date.now(),
+            id: "ex-" + Date.now(),
             ...data,
             questions: data.questions || [],
             createdAt: Date.now()
@@ -825,7 +906,7 @@
 
     async function updateExamQuestionsInStore(examId, questions, extraFields = {}) {
       if (useCloud && currentUser) {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'exams', examId), {
+        await updateDoc(doc(db, "artifacts", appId, "public", "data", "exams", examId), {
           questions,
           ...extraFields
         });
@@ -841,7 +922,7 @@
 
     async function deleteExamFromStore(examId) {
       if (useCloud && currentUser) {
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'exams', examId));
+        await deleteDoc(doc(db, "artifacts", appId, "public", "data", "exams", examId));
       } else {
         state.exams = state.exams.filter(e => e.id !== examId);
         renderApp();
@@ -850,15 +931,15 @@
 
     async function saveResultToStore(resultObj) {
       if (useCloud && currentUser) {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'results'), resultObj);
+        await addDoc(collection(db, "artifacts", appId, "public", "data", "results"), resultObj);
       } else {
-        state.results.unshift({ id: 'res-' + Date.now(), ...resultObj });
+        state.results.unshift({ id: "res-" + Date.now(), ...resultObj });
       }
     }
 
     async function deleteResultFromStore(resultId) {
       if (useCloud && currentUser) {
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'results', resultId));
+        await deleteDoc(doc(db, "artifacts", appId, "public", "data", "results", resultId));
       } else {
         state.results = state.results.filter(r => r.id !== resultId);
         renderApp();
@@ -871,39 +952,45 @@
       } else {
         state.completedChapterIds.add(chapterId);
       }
+      const arr = Array.from(state.completedChapterIds);
+      writeLocalJson(COMPLETED_STORAGE_KEY, arr);
       if (useCloud && currentUser) {
-        await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'completedChapters'), {
-          ids: Array.from(state.completedChapterIds),
-          updatedAt: Date.now()
-        });
+        try {
+          await setDoc(doc(db, "artifacts", appId, "users", currentUser.uid, "profile", "completedChapters"), {
+            ids: arr,
+            updatedAt: Date.now()
+          });
+        } catch (err) {
+          console.warn("Completed chapter cloud save warning:", err);
+        }
       }
       renderApp();
     }
 
     // =========================================================================
-    // 7. MASTER RENDER DISPATCHER
+    // 8. MASTER RENDER DISPATCHER
     // =========================================================================
     function renderApp() {
-      const root = document.getElementById('app-root');
+      const root = document.getElementById("app-root");
       if (!root) return;
 
       switch (state.view) {
-        case 'login':
+        case "login":
           root.innerHTML = renderLoginView();
           break;
-        case 'student-home':
+        case "student-home":
           root.innerHTML = renderStudentHomeView();
           break;
-        case 'chapter-reader':
+        case "chapter-reader":
           root.innerHTML = renderChapterReaderView();
           break;
-        case 'exam-runner':
+        case "exam-runner":
           root.innerHTML = renderExamRunnerView();
           break;
-        case 'exam-result':
+        case "exam-result":
           root.innerHTML = renderExamResultView();
           break;
-        case 'master':
+        case "master":
           root.innerHTML = renderMasterView();
           break;
         default:
@@ -912,14 +999,13 @@
     }
 
     // =========================================================================
-    // 8. VIEW: DEDICATED LOGIN PAGE
+    // 9. VIEW: DEDICATED STUDENT LOGIN PAGE
     // =========================================================================
     function renderLoginView() {
       const classOptions = state.classes.length > 0 ? state.classes : STARTER_CLASSES;
 
       return `
         <div class="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-indigo-50/40 to-slate-100">
-          <!-- Subtle Top Bar with Master Admin Access -->
           <header class="w-full max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
             <div class="flex items-center gap-2.5">
               <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
@@ -940,7 +1026,6 @@
             </button>
           </header>
 
-          <!-- Centered Student Login Card -->
           <main class="flex-1 flex items-center justify-center px-4 py-8">
             <div class="w-full max-w-md bg-white rounded-3xl shadow-xl shadow-slate-200/70 border border-slate-200/80 p-6 sm:p-8 animate-fade-up">
               <div class="text-center mb-7">
@@ -972,9 +1057,9 @@
                     <option value="" disabled selected>Choose your class...</option>
                     ${classOptions.map(c => `
                       <option value="${escapeHtml(c.name)}">
-                        ${escapeHtml(c.name)} ${c.allowMcq ? '(Study + Timed MCQ)' : '(Study Chapters Only)'}
+                        ${escapeHtml(c.name)} ${c.allowMcq ? "(Study + Timed MCQ)" : "(Study Chapters Only)"}
                       </option>
-                    `).join('')}
+                    `).join("")}
                   </select>
                 </div>
 
@@ -999,20 +1084,20 @@
     }
 
     // =========================================================================
-    // 9. VIEW: STUDENT HOME PAGE (STRICT CLASS VISIBILITY, UNEDITABLE IDENTITY)
+    // 10. VIEW: STUDENT HOME PAGE
     // =========================================================================
     function renderStudentHomeView() {
       if (!state.studentSession) {
-        state.view = 'login';
+        state.view = "login";
         return renderLoginView();
       }
 
       const { name, className } = state.studentSession;
       const clsObj = getStudentClassObj();
-      const mcqEnabled = clsObj ? Boolean(clsObj.allowMcq) : (className !== 'Class 10');
+      const mcqEnabled = clsObj ? Boolean(clsObj.allowMcq) : (className !== "Class 10");
 
-      if (!mcqEnabled && state.studentTab === 'exams') {
-        state.studentTab = 'chapters';
+      if (!mcqEnabled && state.studentTab === "exams") {
+        state.studentTab = "chapters";
       }
 
       const myChapters = state.chapters.filter(c => c.className === className);
@@ -1020,15 +1105,17 @@
       const completedCount = myChapters.filter(c => state.completedChapterIds.has(c.id)).length;
       const progressPct = myChapters.length > 0 ? Math.round((completedCount / myChapters.length) * 100) : 0;
 
-      // Count in-progress exams for this student
-      const inProgressExams = myExams.filter(ex => {
-        const key = makeProgressKey(name, className, ex.id);
-        return Boolean(state.savedProgressMap[key]);
-      });
+      const inProgressList = myExams
+        .map(ex => {
+          const key = makeProgressKey(name, className, ex.id);
+          const saved = state.savedProgressMap[key];
+          return saved ? { exam: ex, saved } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => (b.saved.updatedAt || 0) - (a.saved.updatedAt || 0));
 
       return `
         <div class="min-h-screen flex flex-col bg-slate-50">
-          <!-- Sticky Mobile-First Student Header -->
           <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
             <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
               <div class="flex items-center gap-2.5 min-w-0">
@@ -1046,9 +1133,9 @@
 
               <div class="flex items-center gap-2 shrink-0">
                 <button onclick="window.app.openMasterLogin()"
-                  class="px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition hidden sm:inline-flex items-center gap-1.5">
+                  class="px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition inline-flex items-center gap-1.5">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                  Master
+                  <span>Master</span>
                 </button>
                 <button onclick="window.app.handleStudentLogout()"
                   class="px-3.5 py-2 rounded-xl text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-100 transition flex items-center gap-1.5">
@@ -1077,14 +1164,13 @@
                         ${escapeHtml(className)}
                       </span>
                       <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/10 text-indigo-100">
-                        ${mcqEnabled ? 'Chapters & Timed MCQs Enabled' : 'Study Chapters Mode'}
+                        ${mcqEnabled ? "Chapters & Timed MCQs Enabled" : "Study Chapters Mode"}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <!-- Reading Progress Widget -->
-                <div class="bg-white/12 backdrop-blur rounded-2xl p-3.5 sm:min-w-[210px] border border-white/15">
+                <div class="bg-white/15 backdrop-blur rounded-2xl p-3.5 sm:min-w-[210px] border border-white/15">
                   <div class="flex items-center justify-between text-xs font-semibold text-indigo-100 mb-1.5">
                     <span>Chapter Progress</span>
                     <span class="font-mono-num text-white">${completedCount}/${myChapters.length} (${progressPct}%)</span>
@@ -1096,57 +1182,69 @@
               </div>
             </section>
 
-            <!-- Resume In-Progress Exam Quick Banner (if any) -->
-            ${mcqEnabled && inProgressExams.length > 0 ? `
-              <section class="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div class="flex items-start gap-3">
-                  <div class="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                  </div>
-                  <div>
-                    <p class="text-sm font-bold text-amber-950">You have ${inProgressExams.length} exam${inProgressExams.length > 1 ? 's' : ''} paused in progress</p>
-                    <p class="text-xs text-amber-800 mt-0.5">Your timer is paused where you left off. Resume anytime.</p>
-                  </div>
-                </div>
-                <button onclick="window.app.setStudentTab('exams')" class="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-sm shrink-0 transition">
-                  View Paused Exam &rarr;
-                </button>
+            <!-- Prominent Resume Exam Where You Stopped Card -->
+            ${mcqEnabled && inProgressList.length > 0 ? `
+              <section class="space-y-3">
+                ${inProgressList.map(({ exam, saved }) => {
+                  const qCount = exam.questions ? exam.questions.length : 0;
+                  const ansCount = saved.answers ? Object.keys(saved.answers).length : 0;
+                  return `
+                    <div class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                      <div class="flex items-start gap-3 min-w-0">
+                        <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5">
+                          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                        <div class="min-w-0">
+                          <p class="text-xs font-extrabold uppercase tracking-wider text-amber-800">Resume Exam Where You Stopped</p>
+                          <h3 class="text-base font-extrabold text-amber-950 truncate mt-0.5">${escapeHtml(exam.title)}</h3>
+                          <p class="text-xs font-semibold text-amber-800 mt-1 font-mono-num">
+                            Last Question: Q${(saved.currentIndex || 0) + 1} &bull; Answered: ${ansCount}/${qCount} &bull; Time Left: ${formatTime(saved.remainingSeconds)}
+                          </p>
+                        </div>
+                      </div>
+                      <button onclick="window.app.startOrResumeExam('${exam.id}')"
+                        class="px-5 py-3 rounded-xl text-sm font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-sm shrink-0 transition">
+                        Resume Now &rarr;
+                      </button>
+                    </div>
+                  `;
+                }).join("")}
               </section>
-            ` : ''}
+            ` : ""}
 
-            <!-- Navigation Tabs (Touch-friendly) -->
+            <!-- Navigation Tabs -->
             <div class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
               <button onclick="window.app.setStudentTab('chapters')"
                 class="px-4 py-3 rounded-2xl text-sm font-bold transition flex items-center gap-2 shrink-0 ${
-                  state.studentTab === 'chapters'
-                    ? 'bg-slate-900 text-white shadow-md'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                  state.studentTab === "chapters"
+                    ? "bg-slate-900 text-white shadow-md"
+                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
                 }">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>
                 Study Chapters
-                <span class="px-2 py-0.5 rounded-full text-xs ${state.studentTab === 'chapters' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}">${myChapters.length}</span>
+                <span class="px-2 py-0.5 rounded-full text-xs ${state.studentTab === "chapters" ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}">${myChapters.length}</span>
               </button>
 
               ${mcqEnabled ? `
                 <button onclick="window.app.setStudentTab('exams')"
                   class="px-4 py-3 rounded-2xl text-sm font-bold transition flex items-center gap-2 shrink-0 ${
-                    state.studentTab === 'exams'
-                      ? 'bg-slate-900 text-white shadow-md'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                    state.studentTab === "exams"
+                      ? "bg-slate-900 text-white shadow-md"
+                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
                   }">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   Timed MCQ Exams
-                  <span class="px-2 py-0.5 rounded-full text-xs ${state.studentTab === 'exams' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}">${myExams.length}</span>
+                  <span class="px-2 py-0.5 rounded-full text-xs ${state.studentTab === "exams" ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"}">${myExams.length}</span>
                 </button>
               ` : `
                 <div class="px-4 py-3 rounded-2xl text-sm font-semibold bg-slate-100 text-slate-400 border border-slate-200 flex items-center gap-2 shrink-0 cursor-not-allowed">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                   Timed MCQ Exams
-                  <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-500">Not Enabled</span>
+                  <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-500">Locked</span>
                 </div>
               `}
             </div>
@@ -1156,21 +1254,20 @@
                 <svg class="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 <p><strong>${escapeHtml(className)} Study Mode:</strong> Timed MCQ Exams are not enabled for ${escapeHtml(className)}. Enjoy full access to all uploaded chapters, notes, and HTML study materials.</p>
               </div>
-            ` : ''}
+            ` : ""}
 
-            <!-- Tab Content -->
-            ${state.studentTab === 'chapters' ? renderStudentChaptersSection(myChapters) : renderStudentExamsSection(myExams)}
+            ${state.studentTab === "chapters" ? renderStudentChaptersSection(myChapters) : renderStudentExamsSection(myExams)}
           </main>
         </div>
       `;
     }
 
     function renderStudentChaptersSection(myChapters) {
-      const subjects = ['All', ...new Set(myChapters.map(c => c.subject))];
-      if (!subjects.includes(state.studentSubjectFilter)) state.studentSubjectFilter = 'All';
+      const subjects = ["All", ...new Set(myChapters.map(c => c.subject))];
+      if (!subjects.includes(state.studentSubjectFilter)) state.studentSubjectFilter = "All";
 
       const filtered = myChapters.filter(ch => {
-        const subOk = state.studentSubjectFilter === 'All' || ch.subject === state.studentSubjectFilter;
+        const subOk = state.studentSubjectFilter === "All" || ch.subject === state.studentSubjectFilter;
         const q = state.studentSearch.trim().toLowerCase();
         const qOk = !q || ch.title.toLowerCase().includes(q) || ch.subject.toLowerCase().includes(q);
         return subOk && qOk;
@@ -1178,19 +1275,18 @@
 
       return `
         <section class="space-y-4">
-          <!-- Filters -->
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
               ${subjects.map(sub => `
                 <button onclick="window.app.setStudentSubjectFilter('${escapeHtml(sub)}')"
                   class="px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
                     state.studentSubjectFilter === sub
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
                   }">
                   ${escapeHtml(sub)}
                 </button>
-              `).join('')}
+              `).join("")}
             </div>
 
             <div class="relative w-full sm:w-64">
@@ -1211,21 +1307,21 @@
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
               ${filtered.map(ch => {
                 const done = state.completedChapterIds.has(ch.id);
-                const isHtml = ch.contentType === 'html' && ch.htmlContent;
+                const isHtml = ch.contentType === "html" && ch.htmlContent;
                 return `
-                  <article class="bg-white rounded-2xl border ${done ? 'border-emerald-200' : 'border-slate-200'} shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between">
+                  <article class="bg-white rounded-2xl border ${done ? "border-emerald-200" : "border-slate-200"} shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between">
                     <div>
                       <div class="flex items-center justify-between gap-2 mb-3">
                         <div class="flex items-center gap-1.5 flex-wrap">
                           <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700">${escapeHtml(ch.subject)}</span>
-                          ${isHtml ? '<span class="px-2 py-1 rounded-lg text-[11px] font-bold bg-violet-50 text-violet-700">HTML Note</span>' : ''}
+                          ${isHtml ? '<span class="px-2 py-1 rounded-lg text-[11px] font-bold bg-violet-50 text-violet-700">HTML Note</span>' : ""}
                         </div>
-                        ${done ? '<span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">&#10003; Read</span>' : ''}
+                        ${done ? '<span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">&#10003; Read</span>' : ""}
                       </div>
 
                       <h3 class="text-base font-extrabold text-slate-900 leading-snug">${escapeHtml(ch.title)}</h3>
                       <p class="text-sm text-slate-500 mt-2 line-clamp-3 leading-relaxed">
-                        ${isHtml ? 'Interactive HTML formatted study notes. Tap below to open full formatted reader.' : escapeHtml(ch.content)}
+                        ${isHtml ? "Interactive HTML formatted study notes. Tap below to open full reader." : escapeHtml(ch.content)}
                       </p>
                     </div>
 
@@ -1235,16 +1331,16 @@
                         Open Notes
                       </button>
                       <button onclick="window.app.toggleChapterComplete('${ch.id}')"
-                        title="${done ? 'Mark unread' : 'Mark completed'}"
+                        title="${done ? "Mark unread" : "Mark completed"}"
                         class="p-2.5 rounded-xl border transition ${
-                          done ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                          done ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
                         }">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                       </button>
                     </div>
                   </article>
                 `;
-              }).join('')}
+              }).join("")}
             </div>
           `}
         </section>
@@ -1271,20 +1367,20 @@
           ` : `
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
               ${myExams.map(ex => {
-                const qCount = ex.questions?.length || 0;
+                const qCount = ex.questions ? ex.questions.length : 0;
                 const maxMarks = qCount * MARKS_CORRECT;
                 const key = makeProgressKey(name, className, ex.id);
                 const saved = state.savedProgressMap[key];
-                const answeredSaved = saved ? Object.keys(saved.answers || {}).length : 0;
-                const isHtmlOmr = ex.examType === 'html-omr';
+                const answeredSaved = saved && saved.answers ? Object.keys(saved.answers).length : 0;
+                const isHtmlOmr = ex.examType === "html-omr";
 
                 return `
-                  <div class="bg-white rounded-2xl border ${saved ? 'border-amber-300 ring-1 ring-amber-200' : 'border-slate-200'} shadow-sm hover:shadow-md transition p-5 sm:p-6 flex flex-col justify-between">
+                  <div class="bg-white rounded-2xl border ${saved ? "border-amber-300 ring-1 ring-amber-200" : "border-slate-200"} shadow-sm hover:shadow-md transition p-5 sm:p-6 flex flex-col justify-between">
                     <div>
                       <div class="flex items-center justify-between gap-2 flex-wrap mb-3">
                         <div class="flex items-center gap-1.5">
                           <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700">${escapeHtml(ex.subject)}</span>
-                          ${isHtmlOmr ? '<span class="px-2 py-1 rounded-lg text-[11px] font-bold bg-violet-50 text-violet-700">HTML Paper + OMR</span>' : ''}
+                          ${isHtmlOmr ? '<span class="px-2 py-1 rounded-lg text-[11px] font-bold bg-violet-50 text-violet-700">HTML Paper + OMR</span>' : ""}
                         </div>
                         ${saved ? `
                           <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 flex items-center gap-1">
@@ -1317,24 +1413,24 @@
                         <p class="mt-3 text-xs font-semibold text-amber-800 bg-amber-50 rounded-xl px-3 py-2 border border-amber-100">
                           Paused at Question ${(saved.currentIndex || 0) + 1} &bull; ${answeredSaved}/${qCount} answered
                         </p>
-                      ` : ''}
+                      ` : ""}
                     </div>
 
                     <div class="mt-5">
-                      <button onclick="window.app.startOrResumeExam('${ex.id}')" ${qCount === 0 ? 'disabled' : ''}
+                      <button onclick="window.app.startOrResumeExam('${ex.id}')" ${qCount === 0 ? "disabled" : ""}
                         class="w-full py-3.5 rounded-xl text-sm font-bold transition shadow-sm ${
                           qCount === 0
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                            ? "bg-slate-100 text-slate-400 cursor-not-allowed"
                             : saved
-                              ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                              : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                              ? "bg-amber-500 hover:bg-amber-600 text-white"
+                              : "bg-indigo-600 hover:bg-indigo-700 text-white"
                         }">
-                        ${qCount === 0 ? 'No Questions Yet' : saved ? 'Resume Exam Where You Stopped &rarr;' : 'Start Timed Exam &rarr;'}
+                        ${qCount === 0 ? "No Questions Yet" : saved ? "Resume Exam Where You Stopped &rarr;" : "Start Timed Exam &rarr;"}
                       </button>
                     </div>
                   </div>
                 `;
-              }).join('')}
+              }).join("")}
             </div>
           `}
         </section>
@@ -1342,20 +1438,19 @@
     }
 
     // =========================================================================
-    // 10. VIEW: FULL-SCREEN CHAPTER READER (STANDARD + HTML IFRAME SUPPORT)
+    // 11. VIEW: CHAPTER READER (STANDARD + SANDBOXED HTML IFRAME)
     // =========================================================================
     function renderChapterReaderView() {
       const ch = state.chapters.find(c => c.id === state.activeChapterId);
       if (!ch) {
-        state.view = 'student-home';
+        state.view = "student-home";
         return renderStudentHomeView();
       }
       const done = state.completedChapterIds.has(ch.id);
-      const isHtml = ch.contentType === 'html' && ch.htmlContent;
+      const isHtml = ch.contentType === "html" && ch.htmlContent;
 
       return `
         <div class="min-h-screen flex flex-col bg-slate-50">
-          <!-- Sticky Reader Header -->
           <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
             <div class="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
               <button onclick="window.app.backToStudentHome()"
@@ -1371,9 +1466,9 @@
 
               <button onclick="window.app.toggleChapterComplete('${ch.id}')"
                 class="px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
-                  done ? 'bg-emerald-100 text-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  done ? "bg-emerald-100 text-emerald-800" : "bg-emerald-600 hover:bg-emerald-700 text-white"
                 }">
-                ${done ? '&#10003; Completed' : 'Mark Read'}
+                ${done ? "&#10003; Completed" : "Mark Read"}
               </button>
             </div>
           </header>
@@ -1383,7 +1478,7 @@
               <div class="flex flex-wrap items-center gap-2 mb-2">
                 <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700">${escapeHtml(ch.className)}</span>
                 <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-700">${escapeHtml(ch.subject)}</span>
-                ${isHtml ? '<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-violet-50 text-violet-700">HTML Study Document</span>' : ''}
+                ${isHtml ? '<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-violet-50 text-violet-700">HTML Study Document</span>' : ""}
               </div>
               <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">${escapeHtml(ch.title)}</h1>
 
@@ -1401,10 +1496,10 @@
                   <div class="mt-6 rounded-2xl bg-indigo-50/70 border border-indigo-100 p-5">
                     <h3 class="text-xs font-extrabold uppercase tracking-wider text-indigo-800 mb-3">Key Takeaways</h3>
                     <ul class="space-y-2 text-sm text-indigo-950">
-                      ${ch.takeaways.map(t => `<li class="flex items-start gap-2.5"><span class="text-indigo-600 font-bold mt-0.5">&bull;</span><span>${escapeHtml(t)}</span></li>`).join('')}
+                      ${ch.takeaways.map(t => `<li class="flex items-start gap-2.5"><span class="text-indigo-600 font-bold mt-0.5">&bull;</span><span>${escapeHtml(t)}</span></li>`).join("")}
                     </ul>
                   </div>
-                ` : ''}
+                ` : ""}
 
                 <div class="mt-6 text-slate-700 text-sm sm:text-base leading-relaxed whitespace-pre-line bg-slate-50 rounded-2xl p-5 sm:p-6 border border-slate-100">
                   ${escapeHtml(ch.content)}
@@ -1422,7 +1517,7 @@
                     Open Resource &rarr;
                   </a>
                 </div>
-              ` : ''}
+              ` : ""}
             </div>
           </main>
         </div>
@@ -1430,7 +1525,7 @@
     }
 
     // =========================================================================
-    // 11. INTERACTIVE EXAM RUNNER (+4 / -1, RESUME, MOBILE DRAWER, HTML-OMR)
+    // 12. INTERACTIVE EXAM RUNNER (+4 / -1, RESUME, MOBILE DRAWER, HTML-OMR)
     // =========================================================================
     function clearExamTimer() {
       if (state.timerInterval) {
@@ -1459,7 +1554,8 @@
         saveCurrentExamProgressNow();
         state.examSession = null;
         state.mobilePaletteOpen = false;
-        state.view = 'student-home';
+        state.view = "student-home";
+        ensureHomeGuard();
         renderApp();
         showToast(
           fromBackBtn
@@ -1468,7 +1564,8 @@
           "info"
         );
       } else {
-        state.view = 'student-home';
+        state.view = "student-home";
+        ensureHomeGuard();
         renderApp();
       }
     }
@@ -1504,11 +1601,11 @@
       };
 
       state.mobilePaletteOpen = false;
-      state.view = 'exam-runner';
-      pushNavState('exam-runner');
+      state.view = "exam-runner";
+      pushNavState("exam-runner");
 
       if (saved) {
-        showToast(`Resumed at Question ${state.examSession.currentIndex + 1} (${formatTime(state.examSession.remainingSeconds)} left).`, "info");
+        showToast("Resumed at Question " + (state.examSession.currentIndex + 1) + " (" + formatTime(state.examSession.remainingSeconds) + " left).", "info");
       }
 
       let tickCounter = 0;
@@ -1521,7 +1618,6 @@
         tickCounter++;
         updateExamTimerDOM();
 
-        // Auto-save to cloud every 5 seconds & keep local map updated every second
         state.savedProgressMap[progressKey] = {
           examId: exam.id,
           currentIndex: state.examSession.currentIndex,
@@ -1530,6 +1626,8 @@
           remainingSeconds: state.examSession.remainingSeconds,
           updatedAt: Date.now()
         };
+        writeLocalJson(PROGRESS_STORAGE_KEY, state.savedProgressMap);
+
         if (tickCounter % 5 === 0) {
           saveCurrentExamProgressNow();
         }
@@ -1542,21 +1640,21 @@
       }, 1000);
 
       renderApp();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
     function updateExamTimerDOM() {
-      const pill = document.getElementById('runner-timer-pill');
-      const txt = document.getElementById('runner-timer-text');
+      const pill = document.getElementById("runner-timer-pill");
+      const txt = document.getElementById("runner-timer-text");
       if (!pill || !txt || !state.examSession) return;
       const rem = state.examSession.remainingSeconds;
       txt.textContent = formatTime(rem);
       if (rem <= 30) {
-        pill.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono-num font-bold text-sm sm:text-base bg-rose-600 text-white timer-critical';
+        pill.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono-num font-bold text-sm sm:text-base bg-rose-600 text-white timer-critical";
       } else if (rem <= 120) {
-        pill.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono-num font-bold text-sm sm:text-base bg-amber-100 text-amber-900 border border-amber-300';
+        pill.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono-num font-bold text-sm sm:text-base bg-amber-100 text-amber-900 border border-amber-300";
       } else {
-        pill.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono-num font-bold text-sm sm:text-base bg-slate-900 text-white';
+        pill.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono-num font-bold text-sm sm:text-base bg-slate-900 text-white";
       }
     }
 
@@ -1612,14 +1710,13 @@
         result: resultRecord
       };
 
-      // Clear saved in-progress state
       await clearExamProgress(sess.progressKey);
       state.examSession = null;
       state.mobilePaletteOpen = false;
-      state.view = 'exam-result';
-      pushNavState('exam-result');
+      state.view = "exam-result";
+      pushNavState("exam-result");
       renderApp();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: "smooth" });
 
       try {
         await saveResultToStore(resultRecord);
@@ -1633,21 +1730,21 @@
     function renderExamRunnerView() {
       const sess = state.examSession;
       if (!sess) {
-        state.view = 'student-home';
+        state.view = "student-home";
         return renderStudentHomeView();
       }
 
       const { exam, currentIndex, answers, flagged, remainingSeconds } = sess;
       const questions = exam.questions;
       const answeredCount = Object.keys(answers).length;
-      const letters = ['A', 'B', 'C', 'D'];
-      const isHtmlOmr = exam.examType === 'html-omr' && exam.htmlPaperContent;
+      const letters = ["A", "B", "C", "D"];
+      const isHtmlOmr = exam.examType === "html-omr" && exam.htmlPaperContent;
 
       const timerClass = remainingSeconds <= 30
-        ? 'bg-rose-600 text-white timer-critical'
+        ? "bg-rose-600 text-white timer-critical"
         : remainingSeconds <= 120
-          ? 'bg-amber-100 text-amber-900 border border-amber-300'
-          : 'bg-slate-900 text-white';
+          ? "bg-amber-100 text-amber-900 border border-amber-300"
+          : "bg-slate-900 text-white";
 
       const paletteGridHtml = `
         <div class="grid grid-cols-5 gap-2">
@@ -1655,17 +1752,17 @@
             const ans = answers[idx] !== undefined;
             const flg = flagged.has(idx);
             const cur = idx === currentIndex;
-            let cls = 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200';
-            if (flg) cls = 'bg-amber-100 text-amber-900 border-amber-300';
-            else if (ans) cls = 'bg-emerald-500 text-white border-emerald-600';
-            if (cur && !isHtmlOmr) cls += ' ring-2 ring-indigo-600 ring-offset-2';
+            let cls = "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200";
+            if (flg) cls = "bg-amber-100 text-amber-900 border-amber-300";
+            else if (ans) cls = "bg-emerald-500 text-white border-emerald-600";
+            if (cur && !isHtmlOmr) cls += " ring-2 ring-indigo-600 ring-offset-2";
             return `
               <button onclick="window.app.jumpToExamQuestion(${idx})"
                 class="h-11 rounded-xl border text-sm font-bold transition flex items-center justify-center ${cls}">
                 ${idx + 1}
               </button>
             `;
-          }).join('')}
+          }).join("")}
         </div>
         <div class="pt-4 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs text-slate-600">
           <div class="flex items-center gap-2"><span class="w-3 h-3 rounded bg-emerald-500 inline-block"></span> Answered (${answeredCount})</div>
@@ -1677,7 +1774,6 @@
 
       return `
         <div class="min-h-screen flex flex-col bg-slate-50 pb-20 lg:pb-8">
-          <!-- Sticky Mobile-First Exam Header -->
           <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
             <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2">
               <div class="flex items-center gap-2 min-w-0">
@@ -1705,17 +1801,14 @@
                 </button>
               </div>
             </div>
-            <!-- Compact Student & Marking Strip on Mobile -->
             <div class="md:hidden bg-slate-50 border-t border-slate-100 px-3 py-1.5 flex items-center justify-between text-[11px] text-slate-600">
               <span class="font-semibold truncate">${escapeHtml(state.studentSession.name)} (${escapeHtml(state.studentSession.className)})</span>
               <span class="font-mono-num font-bold shrink-0 ml-2"><span class="text-emerald-700">+4</span> / <span class="text-rose-600">-1</span></span>
             </div>
           </header>
 
-          <!-- Exam Body -->
           <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6">
             ${isHtmlOmr ? `
-              <!-- FULL HTML QUESTION PAPER + INTERACTIVE OMR SHEET -->
               <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                 <div class="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   <div class="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
@@ -1730,7 +1823,6 @@
                   ></iframe>
                 </div>
 
-                <!-- Interactive OMR Answer Sheet -->
                 <aside class="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 lg:sticky lg:top-24">
                   <div class="flex items-center justify-between mb-3 pb-3 border-b border-slate-100">
                     <div>
@@ -1752,159 +1844,151 @@
                                 <button onclick="window.app.selectExamOption(${qIdx}, ${optIdx})"
                                   class="w-9 h-9 rounded-full text-xs font-extrabold border-2 transition ${
                                     sel
-                                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                                      : 'bg-white border-slate-300 text-slate-600 hover:border-indigo-400'
+                                      ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
+                                      : "bg-white border-slate-300 text-slate-600 hover:border-indigo-400"
                                   }">
                                   ${letters[optIdx]}
                                 </button>
                               `;
-                            }).join('')}
+                            }).join("")}
                           </div>
                           ${picked !== undefined ? `
-                            <button onclick="window.app.clearExamOption(${qIdx})" class="text-[11px] text-rose-500 hover:text-rose-700 font-bold px-1">✕</button>
+                            <button onclick="window.app.clearExamOption(${qIdx})" class="text-[11px] text-rose-500 hover:text-rose-700 font-bold px-1">&#10005;</button>
                           ` : '<span class="w-4"></span>'}
                         </div>
                       `;
-                    }).join('')}
+                    }).join("")}
                   </div>
                 </aside>
               </div>
-            ` : `
-              <!-- STANDARD INTERACTIVE QUESTION-BY-QUESTION RUNNER -->
-              ${(() => {
-                const q = questions[currentIndex];
-                const selectedOpt = answers[currentIndex];
-                const isFlagged = flagged.has(currentIndex);
-                return `
-                  <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                    <!-- Main Question Card -->
-                    <div class="lg:col-span-8 bg-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-7">
-                      <div class="flex items-center justify-between gap-2 pb-4 border-b border-slate-100">
-                        <span class="text-xs font-extrabold uppercase tracking-wider text-indigo-600 font-mono-num">
-                          Question ${currentIndex + 1} / ${questions.length}
-                        </span>
-                        <button onclick="window.app.toggleFlagQuestion(${currentIndex})"
-                          class="px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
-                            isFlagged
-                              ? 'bg-amber-50 border-amber-300 text-amber-800'
-                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                          }">
-                          <svg class="w-3.5 h-3.5" fill="${isFlagged ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2z"/></svg>
-                          ${isFlagged ? 'Flagged' : 'Flag'}
-                        </button>
-                      </div>
-
-                      <h2 class="text-base sm:text-xl font-bold text-slate-900 mt-5 leading-relaxed">
-                        ${escapeHtml(q.text)}
-                      </h2>
-
-                      <!-- Options -->
-                      <div class="mt-6 space-y-3">
-                        ${q.options.map((opt, optIdx) => {
-                          const isSelected = selectedOpt === optIdx;
-                          return `
-                            <button onclick="window.app.selectExamOption(${currentIndex}, ${optIdx})"
-                              class="w-full text-left p-4 rounded-2xl border-2 transition flex items-center gap-3.5 active:scale-[0.99] ${
-                                isSelected
-                                  ? 'border-indigo-600 bg-indigo-50/70 text-indigo-950 shadow-sm'
-                                  : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50 text-slate-800'
-                              }">
-                              <span class="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-extrabold shrink-0 ${
-                                isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
-                              }">${letters[optIdx]}</span>
-                              <span class="text-sm sm:text-base font-medium leading-snug">${escapeHtml(opt)}</span>
-                            </button>
-                          `;
-                        }).join('')}
-                      </div>
-
-                      <!-- Bottom Action Controls -->
-                      <div class="mt-7 pt-5 border-t border-slate-100 flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
-                          <button onclick="window.app.jumpToExamQuestion(${currentIndex - 1})" ${currentIndex === 0 ? 'disabled' : ''}
-                            class="px-4 py-3 rounded-xl text-sm font-bold border transition ${
-                              currentIndex === 0 ? 'border-slate-100 text-slate-300 cursor-not-allowed' : 'border-slate-200 text-slate-700 hover:bg-slate-100'
-                            }">
-                            &larr; Prev
-                          </button>
-                          ${selectedOpt !== undefined ? `
-                            <button onclick="window.app.clearExamOption(${currentIndex})" class="px-3 py-3 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition">
-                              Clear
-                            </button>
-                          ` : ''}
-                        </div>
-
-                        ${currentIndex < questions.length - 1 ? `
-                          <button onclick="window.app.jumpToExamQuestion(${currentIndex + 1})"
-                            class="px-5 py-3 rounded-xl text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">
-                            Next &rarr;
-                          </button>
-                        ` : `
-                          <button onclick="window.app.promptSubmitExam()"
-                            class="px-5 py-3 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition">
-                            Finish & Submit
-                          </button>
-                        `}
-                      </div>
+            ` : (() => {
+              const q = questions[currentIndex];
+              const selectedOpt = answers[currentIndex];
+              const isFlagged = flagged.has(currentIndex);
+              return `
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                  <div class="lg:col-span-8 bg-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-7">
+                    <div class="flex items-center justify-between gap-2 pb-4 border-b border-slate-100">
+                      <span class="text-xs font-extrabold uppercase tracking-wider text-indigo-600 font-mono-num">
+                        Question ${currentIndex + 1} / ${questions.length}
+                      </span>
+                      <button onclick="window.app.toggleFlagQuestion(${currentIndex})"
+                        class="px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
+                          isFlagged
+                            ? "bg-amber-50 border-amber-300 text-amber-800"
+                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                        }">
+                        <svg class="w-3.5 h-3.5" fill="${isFlagged ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2z"/></svg>
+                        ${isFlagged ? "Flagged" : "Flag"}
+                      </button>
                     </div>
 
-                    <!-- Desktop Palette Sidebar -->
-                    <aside class="hidden lg:block lg:col-span-4 bg-white rounded-3xl border border-slate-200 shadow-sm p-5 space-y-4 sticky top-24">
-                      <div>
-                        <h3 class="text-sm font-extrabold text-slate-900">Question Palette</h3>
-                        <p class="text-xs text-slate-500 mt-0.5">${answeredCount} of ${questions.length} answered</p>
+                    <h2 class="text-base sm:text-xl font-bold text-slate-900 mt-5 leading-relaxed">
+                      ${escapeHtml(q.text)}
+                    </h2>
+
+                    <div class="mt-6 space-y-3">
+                      ${q.options.map((opt, optIdx) => {
+                        const isSelected = selectedOpt === optIdx;
+                        return `
+                          <button onclick="window.app.selectExamOption(${currentIndex}, ${optIdx})"
+                            class="w-full text-left p-4 rounded-2xl border-2 transition flex items-center gap-3.5 active:scale-[0.99] ${
+                              isSelected
+                                ? "border-indigo-600 bg-indigo-50/70 text-indigo-950 shadow-sm"
+                                : "border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50 text-slate-800"
+                            }">
+                            <span class="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-extrabold shrink-0 ${
+                              isSelected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600"
+                            }">${letters[optIdx]}</span>
+                            <span class="text-sm sm:text-base font-medium leading-snug">${escapeHtml(opt)}</span>
+                          </button>
+                        `;
+                      }).join("")}
+                    </div>
+
+                    <div class="mt-7 pt-5 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <div class="flex items-center gap-2">
+                        <button onclick="window.app.jumpToExamQuestion(${currentIndex - 1})" ${currentIndex === 0 ? "disabled" : ""}
+                          class="px-4 py-3 rounded-xl text-sm font-bold border transition ${
+                            currentIndex === 0 ? "border-slate-100 text-slate-300 cursor-not-allowed" : "border-slate-200 text-slate-700 hover:bg-slate-100"
+                          }">
+                          &larr; Prev
+                        </button>
+                        ${selectedOpt !== undefined ? `
+                          <button onclick="window.app.clearExamOption(${currentIndex})" class="px-3 py-3 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition">
+                            Clear
+                          </button>
+                        ` : ""}
+                      </div>
+
+                      ${currentIndex < questions.length - 1 ? `
+                        <button onclick="window.app.jumpToExamQuestion(${currentIndex + 1})"
+                          class="px-5 py-3 rounded-xl text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">
+                          Next &rarr;
+                        </button>
+                      ` : `
+                        <button onclick="window.app.promptSubmitExam()"
+                          class="px-5 py-3 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition">
+                          Finish &amp; Submit
+                        </button>
+                      `}
+                    </div>
+                  </div>
+
+                  <aside class="hidden lg:block lg:col-span-4 bg-white rounded-3xl border border-slate-200 shadow-sm p-5 space-y-4 sticky top-24">
+                    <div>
+                      <h3 class="text-sm font-extrabold text-slate-900">Question Palette</h3>
+                      <p class="text-xs text-slate-500 mt-0.5">${answeredCount} of ${questions.length} answered</p>
+                    </div>
+                    ${paletteGridHtml}
+                  </aside>
+                </div>
+
+                <!-- Mobile Bottom Floating Bar -->
+                <div class="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
+                  <div class="text-xs font-semibold text-slate-600">
+                    <span class="font-extrabold text-slate-900 font-mono-num">${answeredCount}/${questions.length}</span> Answered
+                  </div>
+                  <button onclick="window.app.toggleMobilePalette(true)"
+                    class="px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold flex items-center gap-2 shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                    Question Palette
+                  </button>
+                </div>
+
+                <!-- Mobile Slide-Up Drawer -->
+                ${state.mobilePaletteOpen ? `
+                  <div class="lg:hidden fixed inset-0 z-50 flex flex-col justify-end bg-slate-900/60 backdrop-blur-sm" onclick="if(event.target===this) window.app.toggleMobilePalette(false)">
+                    <div class="bg-white rounded-t-3xl p-5 space-y-4 max-h-[80vh] overflow-y-auto animate-slide-up">
+                      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <div>
+                          <h3 class="text-base font-extrabold text-slate-900">Question Palette</h3>
+                          <p class="text-xs text-slate-500">Tap any number to jump directly</p>
+                        </div>
+                        <button onclick="window.app.toggleMobilePalette(false)" class="p-2 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm">&#10005;</button>
                       </div>
                       ${paletteGridHtml}
-                    </aside>
-                  </div>
-
-                  <!-- Mobile Bottom Floating Bar for Slide-Up Palette Drawer -->
-                  <div class="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 px-4 py-3 flex items-center justify-between gap-3">
-                    <div class="text-xs font-semibold text-slate-600">
-                      <span class="font-extrabold text-slate-900 font-mono-num">${answeredCount}/${questions.length}</span> Answered
                     </div>
-                    <button onclick="window.app.toggleMobilePalette(true)"
-                      class="px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold flex items-center gap-2 shadow-sm">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-                      Question Palette
-                    </button>
                   </div>
-
-                  <!-- Mobile Slide-Up Drawer -->
-                  ${state.mobilePaletteOpen ? `
-                    <div class="lg:hidden fixed inset-0 z-50 flex flex-col justify-end bg-slate-900/60 backdrop-blur-sm" onclick="if(event.target===this) window.app.toggleMobilePalette(false)">
-                      <div class="bg-white rounded-t-3xl p-5 space-y-4 max-h-[80vh] overflow-y-auto animate-slide-up">
-                        <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-                          <div>
-                            <h3 class="text-base font-extrabold text-slate-900">Question Palette</h3>
-                            <p class="text-xs text-slate-500">Tap any number to jump directly</p>
-                          </div>
-                          <button onclick="window.app.toggleMobilePalette(false)" class="p-2 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm">✕</button>
-                        </div>
-                        ${paletteGridHtml}
-                      </div>
-                    </div>
-                  ` : ''}
-                `;
-              })()}
-            `}
+                ` : ""}
+              `;
+            })()}
           </main>
         </div>
       `;
     }
 
     // =========================================================================
-    // 12. VIEW: EXAM RESULTS SCREEN (+4 / -1 BREAKDOWN & REVIEW)
+    // 13. VIEW: EXAM RESULTS SCREEN
     // =========================================================================
     function renderExamResultView() {
       const data = state.lastResultView;
       if (!data) {
-        state.view = 'student-home';
+        state.view = "student-home";
         return renderStudentHomeView();
       }
       const { exam, answers, result } = data;
-      const letters = ['A', 'B', 'C', 'D'];
-      const pct = result.maxMarks > 0 ? Math.max(0, Math.round((result.totalScore / result.maxMarks) * 100)) : 0;
+      const letters = ["A", "B", "C", "D"];
 
       return `
         <div class="min-h-screen flex flex-col bg-slate-50">
@@ -1919,7 +2003,6 @@
           </header>
 
           <main class="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6 animate-fade-up">
-            <!-- Score Banner -->
             <section class="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8">
               <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
                 <div>
@@ -1939,7 +2022,6 @@
                 </div>
               </div>
 
-              <!-- 4-Stat Breakdown -->
               <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6">
                 <div class="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
                   <p class="text-xs font-bold text-emerald-700">Correct (+4)</p>
@@ -1964,7 +2046,6 @@
               </div>
             </section>
 
-            <!-- Question-by-Question Review -->
             <section class="space-y-4">
               <h3 class="text-lg font-extrabold text-slate-900">Detailed Question Review</h3>
               ${exam.questions.map((q, idx) => {
@@ -1989,22 +2070,22 @@
                         ${q.options.map((opt, optIdx) => {
                           const rightOpt = optIdx === Number(q.correctIndex);
                           const userPick = !isSkipped && optIdx === Number(picked);
-                          let style = 'bg-slate-50 border-slate-200 text-slate-700';
-                          if (rightOpt) style = 'bg-emerald-50 border-emerald-400 text-emerald-950 font-semibold';
-                          else if (userPick && !rightOpt) style = 'bg-rose-50 border-rose-400 text-rose-950 font-semibold';
+                          let style = "bg-slate-50 border-slate-200 text-slate-700";
+                          if (rightOpt) style = "bg-emerald-50 border-emerald-400 text-emerald-950 font-semibold";
+                          else if (userPick && !rightOpt) style = "bg-rose-50 border-rose-400 text-rose-950 font-semibold";
                           return `
                             <div class="p-3 rounded-xl border text-xs sm:text-sm flex items-center justify-between gap-2 ${style}">
                               <span><strong>${letters[optIdx]}.</strong> ${escapeHtml(opt)}</span>
-                              ${rightOpt ? '<span class="text-[11px] font-bold text-emerald-700 shrink-0">&#10003;</span>' : ''}
-                              ${userPick && !rightOpt ? '<span class="text-[11px] font-bold text-rose-700 shrink-0">&#10007;</span>' : ''}
+                              ${rightOpt ? '<span class="text-[11px] font-bold text-emerald-700 shrink-0">&#10003;</span>' : ""}
+                              ${userPick && !rightOpt ? '<span class="text-[11px] font-bold text-rose-700 shrink-0">&#10007;</span>' : ""}
                             </div>
                           `;
-                        }).join('')}
+                        }).join("")}
                       </div>
                     ` : `
                       <div class="mt-3 text-xs sm:text-sm flex flex-wrap gap-3">
                         <span class="font-semibold text-emerald-700">Correct Answer: Option ${letters[q.correctIndex]}</span>
-                        <span class="font-semibold text-slate-600">Your Answer: ${isSkipped ? 'Unattempted' : 'Option ' + letters[picked]}</span>
+                        <span class="font-semibold text-slate-600">Your Answer: ${isSkipped ? "Unattempted" : "Option " + letters[picked]}</span>
                       </div>
                     `}
 
@@ -2012,10 +2093,10 @@
                       <div class="mt-3.5 p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs sm:text-sm text-indigo-950">
                         <strong class="text-indigo-800">Explanation:</strong> ${escapeHtml(q.explanation)}
                       </div>
-                    ` : ''}
+                    ` : ""}
                   </div>
                 `;
-              }).join('')}
+              }).join("")}
             </section>
           </main>
         </div>
@@ -2023,15 +2104,16 @@
     }
 
     // =========================================================================
-    // 13. VIEW: MASTER ADMIN CONTROL PANEL (4 TABS, NO PIN HINT)
+    // 14. VIEW: MASTER CONTROL PANEL (NO PIN HINTS, NO SAMPLE DOWNLOADS)
     // =========================================================================
     function openMasterLoginModal() {
       if (state.isMasterAuth) {
-        state.view = 'master';
+        state.view = "master";
+        pushNavState("master");
         renderApp();
         return;
       }
-      document.getElementById('modal-root').innerHTML = `
+      document.getElementById("modal-root").innerHTML = `
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-up">
           <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-sm w-full p-6">
             <div class="flex items-center gap-3 mb-5">
@@ -2063,19 +2145,20 @@
         </div>
       `;
 
-      document.getElementById('master-pin-form').onsubmit = (e) => {
+      document.getElementById("master-pin-form").onsubmit = (e) => {
         e.preventDefault();
-        const val = document.getElementById('master-pin-field').value.trim();
+        const val = document.getElementById("master-pin-field").value.trim();
         if (val === MASTER_ACCESS_CODE) {
           state.isMasterAuth = true;
-          state.view = 'master';
+          state.view = "master";
           closeModal();
+          pushNavState("master");
           showToast("Master Control Panel unlocked.", "success");
           renderApp();
         } else {
-          document.getElementById('master-pin-err').classList.remove('hidden');
-          document.getElementById('master-pin-field').value = '';
-          document.getElementById('master-pin-field').focus();
+          document.getElementById("master-pin-err").classList.remove("hidden");
+          document.getElementById("master-pin-field").value = "";
+          document.getElementById("master-pin-field").focus();
         }
       };
     }
@@ -2083,7 +2166,6 @@
     function renderMasterView() {
       return `
         <div class="min-h-screen flex flex-col bg-slate-50">
-          <!-- Dark Master Header -->
           <header class="sticky top-0 z-40 bg-slate-900 text-white border-b border-slate-800">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
               <div class="flex items-center gap-2.5 min-w-0">
@@ -2095,7 +2177,7 @@
                 </div>
                 <div class="min-w-0">
                   <h1 class="text-base font-extrabold tracking-tight truncate">Master Control Panel</h1>
-                  <p class="text-[11px] text-amber-400 font-semibold hidden sm:block">Classes, HTML Notes, MCQ Exams & Results</p>
+                  <p class="text-[11px] text-amber-400 font-semibold hidden sm:block">Classes, HTML Notes, MCQ Exams &amp; Results</p>
                 </div>
               </div>
 
@@ -2107,30 +2189,29 @@
           </header>
 
           <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 space-y-6 animate-fade-up">
-            <!-- Scrollable Mobile-Friendly Master Tabs -->
             <div class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
               ${[
-                { id: 'classes', label: 'Manage Classes', count: state.classes.length },
-                { id: 'chapters', label: 'Chapters & HTML Notes', count: state.chapters.length },
-                { id: 'exams', label: 'MCQ Exams & Papers', count: state.exams.length },
-                { id: 'results', label: 'Student Results', count: state.results.length }
+                { id: "classes", label: "Manage Classes", count: state.classes.length },
+                { id: "chapters", label: "Chapters & HTML Notes", count: state.chapters.length },
+                { id: "exams", label: "Timed MCQ Exams", count: state.exams.length },
+                { id: "results", label: "Student Results", count: state.results.length }
               ].map(t => `
                 <button onclick="window.app.setMasterTab('${t.id}')"
                   class="px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition shrink-0 flex items-center gap-2 ${
                     state.masterTab === t.id
-                      ? 'bg-slate-900 text-amber-400 shadow-md'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      ? "bg-slate-900 text-amber-400 shadow-md"
+                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
                   }">
                   <span>${t.label}</span>
-                  <span class="px-2 py-0.5 rounded-full text-[11px] ${state.masterTab === t.id ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500'}">${t.count}</span>
+                  <span class="px-2 py-0.5 rounded-full text-[11px] ${state.masterTab === t.id ? "bg-white/15 text-white" : "bg-slate-100 text-slate-500"}">${t.count}</span>
                 </button>
-              `).join('')}
+              `).join("")}
             </div>
 
-            ${state.masterTab === 'classes' ? renderMasterClassesTab() : ''}
-            ${state.masterTab === 'chapters' ? renderMasterChaptersTab() : ''}
-            ${state.masterTab === 'exams' ? renderMasterExamsTab() : ''}
-            ${state.masterTab === 'results' ? renderMasterResultsTab() : ''}
+            ${state.masterTab === "classes" ? renderMasterClassesTab() : ""}
+            ${state.masterTab === "chapters" ? renderMasterChaptersTab() : ""}
+            ${state.masterTab === "exams" ? renderMasterExamsTab() : ""}
+            ${state.masterTab === "results" ? renderMasterResultsTab() : ""}
           </main>
         </div>
       `;
@@ -2140,15 +2221,14 @@
     function renderMasterClassesTab() {
       return `
         <section class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <!-- Add Class Form -->
           <div class="lg:col-span-5 bg-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-6">
             <h2 class="text-base font-extrabold text-slate-900">+ Add New Class</h2>
-            <p class="text-xs text-slate-500 mt-1">New classes immediately appear in the Student Login dropdown and content upload forms.</p>
+            <p class="text-xs text-slate-500 mt-1">New classes immediately appear in the Student Login dropdown and upload forms.</p>
 
             <form onsubmit="window.app.handleAddClass(event)" class="mt-5 space-y-4">
               <div>
                 <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">Class Name *</label>
-                <input id="new-class-name" type="text" required placeholder="e.g., Class 9, JEE Dropper Batch"
+                <input id="new-class-name" type="text" required placeholder="e.g., Class 9, JEE Batch"
                   class="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-medium focus:ring-2 focus:ring-amber-500 outline-none" />
               </div>
 
@@ -2166,7 +2246,6 @@
             </form>
           </div>
 
-          <!-- Existing Classes List -->
           <div class="lg:col-span-7 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
             <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 class="text-base font-extrabold text-slate-900">Active Classes (${state.classes.length})</h3>
@@ -2176,18 +2255,18 @@
                 <div class="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <h4 class="text-base font-extrabold text-slate-900">${escapeHtml(c.name)}</h4>
-                    <p class="text-xs mt-0.5 ${c.allowMcq ? 'text-emerald-700 font-semibold' : 'text-slate-500'}">
-                      ${c.allowMcq ? 'Timed MCQ Exams: Enabled' : 'Timed MCQ Exams: Disabled (Study Chapters Only)'}
+                    <p class="text-xs mt-0.5 ${c.allowMcq ? "text-emerald-700 font-semibold" : "text-slate-500"}">
+                      ${c.allowMcq ? "Timed MCQ Exams: Enabled" : "Timed MCQ Exams: Disabled (Study Chapters Only)"}
                     </p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
                     <button onclick="window.app.toggleClassMcq('${c.id}', ${!c.allowMcq})"
                       class="px-3.5 py-2 rounded-xl text-xs font-bold border transition ${
                         c.allowMcq
-                          ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
-                          : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100"
+                          : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200"
                       }">
-                      ${c.allowMcq ? 'MCQ: ON' : 'MCQ: OFF'}
+                      ${c.allowMcq ? "MCQ: ON" : "MCQ: OFF"}
                     </button>
                     <button onclick="window.app.confirmDeleteClass('${c.id}', '${escapeHtml(c.name)}')"
                       class="px-3 py-2 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 transition">
@@ -2195,7 +2274,7 @@
                     </button>
                   </div>
                 </div>
-              `).join('')}
+              `).join("")}
             </div>
           </div>
         </section>
@@ -2205,7 +2284,7 @@
     // --- MASTER TAB 2: CHAPTERS & HTML NOTES ---
     function renderMasterChaptersTab() {
       const filtered = state.chapters.filter(ch => {
-        return state.masterChapterClassFilter === 'All' || ch.className === state.masterChapterClassFilter;
+        return state.masterChapterClassFilter === "All" || ch.className === state.masterChapterClassFilter;
       });
 
       return `
@@ -2213,20 +2292,14 @@
           <div class="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <select onchange="window.app.setMasterChapterClassFilter(this.value)"
               class="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold outline-none">
-              <option value="All" ${state.masterChapterClassFilter === 'All' ? 'selected' : ''}>All Classes</option>
-              ${state.classes.map(c => `<option value="${escapeHtml(c.name)}" ${state.masterChapterClassFilter === c.name ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+              <option value="All" ${state.masterChapterClassFilter === "All" ? "selected" : ""}>All Classes</option>
+              ${state.classes.map(c => `<option value="${escapeHtml(c.name)}" ${state.masterChapterClassFilter === c.name ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
             </select>
 
-            <div class="flex flex-wrap items-center gap-2">
-              <button onclick="window.app.downloadSampleNoteHtml()"
-                class="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition">
-                Download Sample Note HTML
-              </button>
-              <button onclick="window.app.openChapterFormModal()"
-                class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-900 hover:bg-slate-800 text-amber-400 shadow-sm transition">
-                + Upload Chapter / HTML Note
-              </button>
-            </div>
+            <button onclick="window.app.openChapterFormModal()"
+              class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-900 hover:bg-slate-800 text-amber-400 shadow-sm transition">
+              + Upload Chapter / HTML Note
+            </button>
           </div>
 
           <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
@@ -2238,7 +2311,7 @@
                   <div class="flex flex-wrap items-center gap-1.5 mb-1">
                     <span class="px-2.5 py-0.5 rounded-md text-xs font-bold bg-slate-900 text-white">${escapeHtml(ch.className)}</span>
                     <span class="px-2.5 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-700">${escapeHtml(ch.subject)}</span>
-                    ${ch.contentType === 'html' ? '<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-violet-100 text-violet-800">HTML File</span>' : '<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-600">Standard Note</span>'}
+                    ${ch.contentType === "html" ? '<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-violet-100 text-violet-800">HTML Note</span>' : '<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-600">Standard Note</span>'}
                   </div>
                   <h4 class="text-base font-extrabold text-slate-900 truncate">${escapeHtml(ch.title)}</h4>
                 </div>
@@ -2247,7 +2320,7 @@
                   <button onclick="window.app.confirmDeleteChapter('${ch.id}')" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700">Delete</button>
                 </div>
               </div>
-            `).join('')}
+            `).join("")}
           </div>
         </section>
       `;
@@ -2255,160 +2328,187 @@
 
     function openChapterFormModal(editId = null) {
       const existing = editId ? state.chapters.find(c => c.id === editId) : null;
-      let contentType = existing?.contentType || 'standard';
-      let uploadedHtml = existing?.htmlContent || '';
+      let contentType = existing && existing.contentType ? existing.contentType : "standard";
+      let uploadedHtml = existing && existing.htmlContent ? existing.htmlContent : "";
 
-      const renderFormModal = () => {
-        document.getElementById('modal-root').innerHTML = `
-          <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-up">
-            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden">
-              <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-                <h3 class="text-base sm:text-lg font-extrabold text-slate-900">${existing ? 'Edit Chapter' : 'Upload Chapter / Note'}</h3>
-                <button onclick="window.app.closeModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 font-bold">✕</button>
+      document.getElementById("modal-root").innerHTML = `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-up">
+          <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <h3 class="text-base sm:text-lg font-extrabold text-slate-900">${existing ? "Edit Chapter" : "Upload Chapter / Note"}</h3>
+              <button onclick="window.app.closeModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 font-bold">&#10005;</button>
+            </div>
+
+            <form id="chapter-modal-form" class="p-5 overflow-y-auto space-y-4">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Class *</label>
+                  <select id="ch-cls" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
+                    ${state.classes.map(c => `<option value="${escapeHtml(c.name)}" ${existing && existing.className === c.name ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Subject *</label>
+                  <select id="ch-sub" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
+                    ${SUBJECTS.map(s => `<option value="${s}" ${existing && existing.subject === s ? "selected" : ""}>${s}</option>`).join("")}
+                  </select>
+                </div>
               </div>
 
-              <form id="chapter-modal-form" class="p-5 overflow-y-auto space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Class *</label>
-                    <select id="ch-cls" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
-                      ${state.classes.map(c => `<option value="${escapeHtml(c.name)}" ${existing?.className === c.name ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
-                    </select>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Subject *</label>
-                    <select id="ch-sub" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
-                      ${SUBJECTS.map(s => `<option value="${s}" ${existing?.subject === s ? 'selected' : ''}>${s}</option>`).join('')}
-                    </select>
-                  </div>
-                </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Chapter Title *</label>
+                <input id="ch-title" type="text" required value="${escapeHtml(existing ? existing.title : "")}" placeholder="e.g., Wave Optics"
+                  class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
 
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1.5">Note Format</label>
+                <div class="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-100 border border-slate-200">
+                  <button type="button" id="btn-ch-mode-std" class="py-2 rounded-lg text-xs font-bold transition ${contentType === "standard" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}">Standard Text Editor</button>
+                  <button type="button" id="btn-ch-mode-html" class="py-2 rounded-lg text-xs font-bold transition ${contentType === "html" ? "bg-white text-violet-700 shadow-sm" : "text-slate-600"}">HTML File / Paste HTML</button>
+                </div>
+              </div>
+
+              <div id="ch-std-fields" class="${contentType === "standard" ? "space-y-3.5" : "hidden"}">
                 <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Chapter Title *</label>
-                  <input id="ch-title" type="text" required value="${escapeHtml(existing?.title || '')}" placeholder="e.g., Wave Optics"
-                    class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Key Takeaways (one per line)</label>
+                  <textarea id="ch-takeaways" rows="3" placeholder="Bullet points..."
+                    class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none">${escapeHtml(existing && existing.takeaways ? existing.takeaways.join("\n") : "")}</textarea>
                 </div>
-
-                <!-- Content Mode Toggle -->
                 <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1.5">Note Format</label>
-                  <div class="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-100 border border-slate-200">
-                    <button type="button" id="btn-ch-mode-std" class="py-2 rounded-lg text-xs font-bold transition ${contentType === 'standard' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600'}">Standard Text Editor</button>
-                    <button type="button" id="btn-ch-mode-html" class="py-2 rounded-lg text-xs font-bold transition ${contentType === 'html' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-600'}">Upload HTML File (.html)</button>
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Detailed Notes *</label>
+                  <textarea id="ch-content" rows="5" ${contentType === "standard" ? "required" : ""} placeholder="Write chapter notes..."
+                    class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none">${escapeHtml(existing ? existing.content : "")}</textarea>
+                </div>
+              </div>
+
+              <div id="ch-html-fields" class="${contentType === "html" ? "space-y-3" : "hidden"}">
+                <div class="p-4 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/50 space-y-3">
+                  <p class="text-xs font-bold text-violet-900 text-center">Upload your prepared HTML Note (.html / .htm)</p>
+                  <input id="ch-html-file" type="file" accept="text/html,text/plain,.html,.htm,*/*"
+                    class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-violet-600 file:text-white hover:file:bg-violet-700 cursor-pointer" />
+                  <p id="ch-html-status" class="text-xs font-semibold text-center ${uploadedHtml ? "text-emerald-700" : "text-slate-500"}">
+                    ${uploadedHtml ? "HTML loaded (" + uploadedHtml.length.toLocaleString() + " characters ready)" : "No HTML file selected yet."}
+                  </p>
+
+                  <div class="pt-3 border-t border-violet-200/80 space-y-2">
+                    <p class="text-[11px] font-extrabold uppercase tracking-wider text-violet-700 text-center">&mdash; OR Paste HTML Code Directly &mdash;</p>
+                    <textarea id="ch-html-paste" rows="5" placeholder="Paste your HTML note code here..."
+                      class="w-full px-3 py-2 rounded-xl border border-violet-200 bg-white text-xs font-mono outline-none focus:ring-2 focus:ring-violet-500">${escapeHtml(uploadedHtml)}</textarea>
+                    <button type="button" id="btn-load-pasted-ch-html"
+                      class="w-full py-2.5 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white transition">
+                      Load Pasted HTML
+                    </button>
                   </div>
                 </div>
+              </div>
 
-                <div id="ch-std-fields" class="${contentType === 'standard' ? 'space-y-3.5' : 'hidden'}">
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Key Takeaways (one per line)</label>
-                    <textarea id="ch-takeaways" rows="3" placeholder="Bullet points..."
-                      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none">${escapeHtml((existing?.takeaways || []).join('\n'))}</textarea>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Detailed Notes *</label>
-                    <textarea id="ch-content" rows="5" ${contentType === 'standard' ? 'required' : ''} placeholder="Write chapter notes..."
-                      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none">${escapeHtml(existing?.content || '')}</textarea>
-                  </div>
-                </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Optional Reference / Video URL</label>
+                <input id="ch-video" type="url" value="${escapeHtml(existing ? existing.videoUrl : "")}" placeholder="https://..."
+                  class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none" />
+              </div>
 
-                <div id="ch-html-fields" class="${contentType === 'html' ? 'space-y-3' : 'hidden'}">
-                  <div class="p-4 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/50 text-center space-y-2">
-                    <p class="text-xs font-bold text-violet-900">Upload your prepared HTML Note (.html / .htm)</p>
-                    <input id="ch-html-file" type="file" accept=".html,.htm" class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-violet-600 file:text-white hover:file:bg-violet-700 cursor-pointer" />
-                    <p id="ch-html-status" class="text-xs font-semibold ${uploadedHtml ? 'text-emerald-700' : 'text-slate-500'}">
-                      ${uploadedHtml ? `HTML loaded (${uploadedHtml.length.toLocaleString()} characters ready)` : 'No HTML file selected yet.'}
-                    </p>
-                  </div>
-                  <button type="button" onclick="window.app.downloadSampleNoteHtml()" class="text-xs font-bold text-indigo-600 hover:underline">
-                    Need a template? Download Sample Note HTML
-                  </button>
-                </div>
-
-                <div>
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Optional Reference / Video URL</label>
-                  <input id="ch-video" type="url" value="${escapeHtml(existing?.videoUrl || '')}" placeholder="https://..."
-                    class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none" />
-                </div>
-
-                <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-                  <button type="button" onclick="window.app.closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100">Cancel</button>
-                  <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-900 text-amber-400">
-                    ${existing ? 'Save Changes' : 'Publish Chapter'}
-                  </button>
-                </div>
-              </form>
-            </div>
+              <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button type="button" onclick="window.app.closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100">Cancel</button>
+                <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-900 text-amber-400">
+                  ${existing ? "Save Changes" : "Publish Chapter"}
+                </button>
+              </div>
+            </form>
           </div>
-        `;
+        </div>
+      `;
 
-        document.getElementById('btn-ch-mode-std').onclick = () => {
-          contentType = 'standard';
-          document.getElementById('ch-std-fields').className = 'space-y-3.5';
-          document.getElementById('ch-html-fields').className = 'hidden';
-          document.getElementById('ch-content').setAttribute('required', 'required');
-          document.getElementById('btn-ch-mode-std').className = 'py-2 rounded-lg text-xs font-bold transition bg-white text-indigo-700 shadow-sm';
-          document.getElementById('btn-ch-mode-html').className = 'py-2 rounded-lg text-xs font-bold transition text-slate-600';
-        };
-
-        document.getElementById('btn-ch-mode-html').onclick = () => {
-          contentType = 'html';
-          document.getElementById('ch-std-fields').className = 'hidden';
-          document.getElementById('ch-html-fields').className = 'space-y-3';
-          document.getElementById('ch-content').removeAttribute('required');
-          document.getElementById('btn-ch-mode-html').className = 'py-2 rounded-lg text-xs font-bold transition bg-white text-violet-700 shadow-sm';
-          document.getElementById('btn-ch-mode-std').className = 'py-2 rounded-lg text-xs font-bold transition text-slate-600';
-        };
-
-        document.getElementById('ch-html-file').onchange = (ev) => {
-          const file = ev.target.files?.[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => {
-            uploadedHtml = String(reader.result || '');
-            const st = document.getElementById('ch-html-status');
-            if (st) {
-              st.className = 'text-xs font-bold text-emerald-700';
-              st.textContent = `Loaded "${file.name}" (${uploadedHtml.length.toLocaleString()} chars)`;
-            }
-          };
-          reader.readAsText(file);
-        };
-
-        document.getElementById('chapter-modal-form').onsubmit = async (e) => {
-          e.preventDefault();
-          if (contentType === 'html' && !uploadedHtml.trim()) {
-            showToast("Please upload an HTML file first.", "warning");
-            return;
-          }
-          const payload = {
-            className: document.getElementById('ch-cls').value,
-            subject: document.getElementById('ch-sub').value,
-            title: document.getElementById('ch-title').value.trim(),
-            contentType,
-            takeaways: document.getElementById('ch-takeaways').value.split('\n').map(s => s.trim()).filter(Boolean),
-            content: document.getElementById('ch-content').value.trim(),
-            htmlContent: contentType === 'html' ? uploadedHtml : '',
-            videoUrl: document.getElementById('ch-video').value.trim()
-          };
-          try {
-            await saveChapterToStore(payload, editId);
-            closeModal();
-            showToast(editId ? "Chapter updated!" : "Chapter published!", "success");
-          } catch (err) {
-            console.error(err);
-            showToast("Could not save chapter (check HTML file size < 900KB).", "error");
-          }
-        };
+      document.getElementById("btn-ch-mode-std").onclick = () => {
+        contentType = "standard";
+        document.getElementById("ch-std-fields").className = "space-y-3.5";
+        document.getElementById("ch-html-fields").className = "hidden";
+        document.getElementById("ch-content").setAttribute("required", "required");
+        document.getElementById("btn-ch-mode-std").className = "py-2 rounded-lg text-xs font-bold transition bg-white text-indigo-700 shadow-sm";
+        document.getElementById("btn-ch-mode-html").className = "py-2 rounded-lg text-xs font-bold transition text-slate-600";
       };
 
-      renderFormModal();
+      document.getElementById("btn-ch-mode-html").onclick = () => {
+        contentType = "html";
+        document.getElementById("ch-std-fields").className = "hidden";
+        document.getElementById("ch-html-fields").className = "space-y-3";
+        document.getElementById("ch-content").removeAttribute("required");
+        document.getElementById("btn-ch-mode-html").className = "py-2 rounded-lg text-xs font-bold transition bg-white text-violet-700 shadow-sm";
+        document.getElementById("btn-ch-mode-std").className = "py-2 rounded-lg text-xs font-bold transition text-slate-600";
+      };
+
+      document.getElementById("ch-html-file").onchange = (ev) => {
+        const file = ev.target.files && ev.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          uploadedHtml = String(reader.result || "");
+          const pasteEl = document.getElementById("ch-html-paste");
+          if (pasteEl) pasteEl.value = uploadedHtml;
+          const st = document.getElementById("ch-html-status");
+          if (st) {
+            st.className = "text-xs font-bold text-emerald-700 text-center";
+            st.textContent = "Loaded \"" + file.name + "\" (" + uploadedHtml.length.toLocaleString() + " chars)";
+          }
+        };
+        reader.readAsText(file);
+      };
+
+      const syncPastedChapterHtml = (notify) => {
+        const val = document.getElementById("ch-html-paste")?.value || "";
+        uploadedHtml = val;
+        const st = document.getElementById("ch-html-status");
+        if (st) {
+          if (val.trim()) {
+            st.className = "text-xs font-bold text-emerald-700 text-center";
+            st.textContent = "Pasted HTML ready (" + val.length.toLocaleString() + " chars)";
+          } else {
+            st.className = "text-xs font-semibold text-slate-500 text-center";
+            st.textContent = "No HTML file selected yet.";
+          }
+        }
+        if (notify) {
+          if (val.trim()) showToast("Pasted HTML note loaded!", "success");
+          else showToast("Please paste some HTML code first.", "warning");
+        }
+      };
+
+      document.getElementById("ch-html-paste").oninput = () => syncPastedChapterHtml(false);
+      document.getElementById("btn-load-pasted-ch-html").onclick = () => syncPastedChapterHtml(true);
+
+      document.getElementById("chapter-modal-form").onsubmit = async (e) => {
+        e.preventDefault();
+        if (contentType === "html" && !uploadedHtml.trim()) {
+          showToast("Please upload or paste HTML content first.", "warning");
+          return;
+        }
+        const payload = {
+          className: document.getElementById("ch-cls").value,
+          subject: document.getElementById("ch-sub").value,
+          title: document.getElementById("ch-title").value.trim(),
+          contentType,
+          takeaways: document.getElementById("ch-takeaways").value.split("\n").map(s => s.trim()).filter(Boolean),
+          content: document.getElementById("ch-content").value.trim(),
+          htmlContent: contentType === "html" ? uploadedHtml : "",
+          videoUrl: document.getElementById("ch-video").value.trim()
+        };
+        try {
+          await saveChapterToStore(payload, editId);
+          closeModal();
+          showToast(editId ? "Chapter updated!" : "Chapter published!", "success");
+        } catch (err) {
+          console.error(err);
+          showToast("Could not save chapter (ensure HTML is under 900KB).", "error");
+        }
+      };
     }
 
-    // --- MASTER TAB 3: MCQ EXAMS & HTML QUESTION PAPER UPLOAD ---
+    // --- MASTER TAB 3: TIMED MCQ EXAMS & HTML QUESTION PAPER UPLOAD ---
     function renderMasterExamsTab() {
       const mcqClasses = state.classes.filter(c => c.allowMcq);
       const filtered = state.exams.filter(ex => {
-        return state.masterExamClassFilter === 'All' || ex.className === state.masterExamClassFilter;
+        return state.masterExamClassFilter === "All" || ex.className === state.masterExamClassFilter;
       });
 
       return `
@@ -2416,27 +2516,21 @@
           <div class="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <select onchange="window.app.setMasterExamClassFilter(this.value)"
               class="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold outline-none">
-              <option value="All" ${state.masterExamClassFilter === 'All' ? 'selected' : ''}>All MCQ-Enabled Classes</option>
-              ${mcqClasses.map(c => `<option value="${escapeHtml(c.name)}" ${state.masterExamClassFilter === c.name ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+              <option value="All" ${state.masterExamClassFilter === "All" ? "selected" : ""}>All MCQ-Enabled Classes</option>
+              ${mcqClasses.map(c => `<option value="${escapeHtml(c.name)}" ${state.masterExamClassFilter === c.name ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
             </select>
 
-            <div class="flex flex-wrap items-center gap-2">
-              <button onclick="window.app.downloadSampleQuestionHtml()"
-                class="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition">
-                Download Sample Question HTML
-              </button>
-              <button onclick="window.app.openExamFormModal()"
-                class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-900 hover:bg-slate-800 text-amber-400 shadow-sm transition">
-                + Create Timed MCQ Exam
-              </button>
-            </div>
+            <button onclick="window.app.openExamFormModal()"
+              class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-900 hover:bg-slate-800 text-amber-400 shadow-sm transition">
+              + Create Timed MCQ Exam
+            </button>
           </div>
 
           <div class="grid grid-cols-1 gap-4">
             ${filtered.length === 0 ? `
               <div class="bg-white rounded-3xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">No exams created yet.</div>
             ` : filtered.map(ex => {
-              const qCount = ex.questions?.length || 0;
+              const qCount = ex.questions ? ex.questions.length : 0;
               return `
                 <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
@@ -2445,7 +2539,7 @@
                       <span class="px-2.5 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-700">${escapeHtml(ex.subject)}</span>
                       <span class="px-2.5 py-0.5 rounded-md text-xs font-bold bg-amber-50 text-amber-800 font-mono-num">${ex.durationMinutes} mins</span>
                       <span class="px-2.5 py-0.5 rounded-md text-xs font-bold bg-emerald-50 text-emerald-700 font-mono-num">${qCount} Qs (${qCount * 4} Marks)</span>
-                      ${ex.examType === 'html-omr' ? '<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-violet-100 text-violet-800">HTML Paper + OMR</span>' : ''}
+                      ${ex.examType === "html-omr" ? '<span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-violet-100 text-violet-800">HTML Paper + OMR</span>' : ""}
                     </div>
                     <h4 class="text-base sm:text-lg font-extrabold text-slate-900">${escapeHtml(ex.title)}</h4>
                   </div>
@@ -2459,7 +2553,7 @@
                   </div>
                 </div>
               `;
-            }).join('')}
+            }).join("")}
           </div>
         </section>
       `;
@@ -2473,36 +2567,36 @@
         return;
       }
 
-      document.getElementById('modal-root').innerHTML = `
+      document.getElementById("modal-root").innerHTML = `
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-up">
           <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden">
             <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <h3 class="text-base sm:text-lg font-extrabold text-slate-900">${existing ? 'Edit Exam Details' : 'Create Timed MCQ Exam'}</h3>
-              <button onclick="window.app.closeModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 font-bold">✕</button>
+              <h3 class="text-base sm:text-lg font-extrabold text-slate-900">${existing ? "Edit Exam Details" : "Create Timed MCQ Exam"}</h3>
+              <button onclick="window.app.closeModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 font-bold">&#10005;</button>
             </div>
             <form id="exam-info-form" class="p-5 space-y-4">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label class="block text-xs font-bold text-slate-700 mb-1">MCQ-Enabled Class *</label>
                   <select id="ex-cls" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
-                    ${mcqClasses.map(c => `<option value="${escapeHtml(c.name)}" ${existing?.className === c.name ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+                    ${mcqClasses.map(c => `<option value="${escapeHtml(c.name)}" ${existing && existing.className === c.name ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
                   </select>
                 </div>
                 <div>
                   <label class="block text-xs font-bold text-slate-700 mb-1">Subject *</label>
                   <select id="ex-sub" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white outline-none">
-                    ${SUBJECTS.map(s => `<option value="${s}" ${existing?.subject === s ? 'selected' : ''}>${s}</option>`).join('')}
+                    ${SUBJECTS.map(s => `<option value="${s}" ${existing && existing.subject === s ? "selected" : ""}>${s}</option>`).join("")}
                   </select>
                 </div>
               </div>
               <div>
                 <label class="block text-xs font-bold text-slate-700 mb-1">Exam Title *</label>
-                <input id="ex-title" type="text" required value="${escapeHtml(existing?.title || '')}" placeholder="e.g., Rotational Motion Timed Test"
+                <input id="ex-title" type="text" required value="${escapeHtml(existing ? existing.title : "")}" placeholder="e.g., Rotational Motion Timed Test"
                   class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
                 <label class="block text-xs font-bold text-slate-700 mb-1">Duration (Minutes) *</label>
-                <input id="ex-dur" type="number" min="1" max="240" required value="${existing?.durationMinutes || 15}"
+                <input id="ex-dur" type="number" min="1" max="240" required value="${existing ? existing.durationMinutes : 15}"
                   class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono-num outline-none" />
               </div>
               <p class="text-xs text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-200">
@@ -2511,7 +2605,7 @@
               <div class="pt-2 flex justify-end gap-2">
                 <button type="button" onclick="window.app.closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100">Cancel</button>
                 <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-900 text-amber-400">
-                  ${existing ? 'Update Exam' : 'Create Exam'}
+                  ${existing ? "Update Exam" : "Create Exam"}
                 </button>
               </div>
             </form>
@@ -2519,23 +2613,23 @@
         </div>
       `;
 
-      document.getElementById('exam-info-form').onsubmit = async (e) => {
+      document.getElementById("exam-info-form").onsubmit = async (e) => {
         e.preventDefault();
         const payload = {
-          className: document.getElementById('ex-cls').value,
-          subject: document.getElementById('ex-sub').value,
-          title: document.getElementById('ex-title').value.trim(),
-          durationMinutes: Math.max(1, parseInt(document.getElementById('ex-dur').value, 10) || 10)
+          className: document.getElementById("ex-cls").value,
+          subject: document.getElementById("ex-sub").value,
+          title: document.getElementById("ex-title").value.trim(),
+          durationMinutes: Math.max(1, parseInt(document.getElementById("ex-dur").value, 10) || 10)
         };
         if (!editId) {
-          payload.examType = 'structured';
-          payload.htmlPaperContent = '';
+          payload.examType = "structured";
+          payload.htmlPaperContent = "";
           payload.questions = [];
         }
         try {
           await saveExamToStore(payload, editId);
           closeModal();
-          showToast(editId ? "Exam updated!" : "Exam created! Now add questions or upload an HTML question paper.", "success");
+          showToast(editId ? "Exam updated!" : "Exam created! Now add questions or upload an HTML paper.", "success");
         } catch (err) {
           console.error(err);
           showToast("Failed to save exam.", "error");
@@ -2543,28 +2637,27 @@
       };
     }
 
-    // Smart HTML Question Paper Parser
     function parseHtmlQuestionPaper(htmlString) {
       const parser = new DOMParser();
-      const docObj = parser.parseFromString(htmlString, 'text/html');
-      const blocks = docObj.querySelectorAll('.mcq-item, .question');
+      const docObj = parser.parseFromString(htmlString, "text/html");
+      const blocks = docObj.querySelectorAll(".mcq-item, .question");
       const parsed = [];
-      const letterMap = { A: 0, B: 1, C: 2, D: 3, '0': 0, '1': 1, '2': 2, '3': 3 };
+      const letterMap = { A: 0, B: 1, C: 2, D: 3, "0": 0, "1": 1, "2": 2, "3": 3 };
 
       blocks.forEach((block, i) => {
-        const textEl = block.querySelector('.question-text, .q-text, h3, h4, p');
-        const text = textEl ? textEl.textContent.trim() : '';
-        const optEls = block.querySelectorAll('.option, li');
+        const textEl = block.querySelector(".question-text, .q-text, h3, h4, p");
+        const text = textEl ? textEl.textContent.trim() : "";
+        const optEls = block.querySelectorAll(".option, li");
         const options = Array.from(optEls).slice(0, 4).map(el => el.textContent.trim());
-        const rawAns = (block.getAttribute('data-answer') || 'A').trim().toUpperCase();
+        const rawAns = (block.getAttribute("data-answer") || "A").trim().toUpperCase();
         const correctIndex = letterMap[rawAns] !== undefined ? letterMap[rawAns] : 0;
-        const expEl = block.querySelector('.explanation');
-        const explanation = expEl ? expEl.textContent.trim() : '';
+        const expEl = block.querySelector(".explanation");
+        const explanation = expEl ? expEl.textContent.trim() : "";
 
         if (text && options.length >= 2) {
-          while (options.length < 4) options.push('—');
+          while (options.length < 4) options.push("-");
           parsed.push({
-            id: `html-q-${Date.now()}-${i}`,
+            id: "html-q-" + Date.now() + "-" + i,
             text,
             options,
             correctIndex,
@@ -2580,38 +2673,40 @@
       if (!exam) return;
       const questions = exam.questions || [];
       const editQ = editQIndex !== null ? questions[editQIndex] : null;
-      const letters = ['A', 'B', 'C', 'D'];
+      const letters = ["A", "B", "C", "D"];
 
-      document.getElementById('modal-root').innerHTML = `
+      document.getElementById("modal-root").innerHTML = `
         <div class="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-up">
           <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[94vh] flex flex-col overflow-hidden">
-            <!-- Header -->
             <div class="px-5 py-4 bg-slate-900 text-white flex items-center justify-between gap-3">
               <div class="min-w-0">
                 <p class="text-xs text-amber-400 font-bold">${escapeHtml(exam.className)} &bull; ${escapeHtml(exam.subject)}</p>
                 <h3 class="text-base sm:text-lg font-extrabold truncate">${escapeHtml(exam.title)} (${questions.length} Qs)</h3>
               </div>
-              <button onclick="window.app.closeModal()" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm">✕</button>
+              <button onclick="window.app.closeModal()" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm">&#10005;</button>
             </div>
 
-            <!-- Body -->
             <div class="p-4 sm:p-6 overflow-y-auto space-y-6">
-              <!-- HTML Question Paper Upload Box -->
-              <div class="rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/60 p-4 sm:p-5">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <h4 class="text-sm font-extrabold text-violet-950">Upload HTML Question Paper (.html / .htm)</h4>
-                    <p class="text-xs text-violet-800 mt-0.5">Auto-parses structured <code class="font-mono">.mcq-item</code> questions, OR attaches any custom HTML paper with an OMR Answer Key.</p>
-                  </div>
-                  <button type="button" onclick="window.app.downloadSampleQuestionHtml()"
-                    class="px-3 py-2 rounded-xl text-xs font-bold bg-white border border-violet-200 text-violet-700 hover:bg-violet-100 shrink-0">
-                    Download Sample HTML
+              <!-- HTML Question Paper Upload + Direct Paste Box -->
+              <div class="rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/60 p-4 sm:p-5 space-y-3">
+                <div>
+                  <h4 class="text-sm font-extrabold text-violet-950">Upload HTML Question Paper (.html / .htm)</h4>
+                  <p class="text-xs text-violet-800 mt-0.5">Auto-parses structured <code class="font-mono">.mcq-item</code> questions, OR attaches any custom HTML paper with an OMR Answer Key.</p>
+                </div>
+
+                <input id="exam-html-upload" type="file" accept="text/html,text/plain,.html,.htm,*/*"
+                  class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-violet-600 file:text-white hover:file:bg-violet-700 cursor-pointer" />
+
+                <div class="pt-3 border-t border-violet-200/80 space-y-2">
+                  <p class="text-[11px] font-extrabold uppercase tracking-wider text-violet-700 text-center">&mdash; OR Paste HTML Code Directly &mdash;</p>
+                  <textarea id="exam-html-paste" rows="4" placeholder="Paste your HTML question paper code here..."
+                    class="w-full px-3 py-2 rounded-xl border border-violet-200 bg-white text-xs font-mono outline-none focus:ring-2 focus:ring-violet-500"></textarea>
+                  <button type="button" id="btn-load-pasted-exam-html"
+                    class="w-full py-2.5 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white transition">
+                    Load Pasted HTML
                   </button>
                 </div>
-                <div class="mt-3">
-                  <input id="exam-html-upload" type="file" accept=".html,.htm"
-                    class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-violet-600 file:text-white hover:file:bg-violet-700 cursor-pointer" />
-                </div>
+
                 <div id="html-upload-preview" class="mt-3 hidden"></div>
               </div>
 
@@ -2619,47 +2714,44 @@
               <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 <form id="manual-q-form" class="lg:col-span-6 space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 h-fit">
                   <div class="flex items-center justify-between">
-                    <h4 class="text-sm font-extrabold text-slate-900">${editQ ? `Edit Question #${editQIndex + 1}` : 'Add Question Manually'}</h4>
-                    ${editQ ? `<button type="button" onclick="window.app.openQuestionManagerModal('${examId}')" class="text-xs font-bold text-indigo-600">+ Add New</button>` : ''}
+                    <h4 class="text-sm font-extrabold text-slate-900">${editQ ? "Edit Question #" + (editQIndex + 1) : "Add Question Manually"}</h4>
+                    ${editQ ? `<button type="button" onclick="window.app.openQuestionManagerModal('${examId}')" class="text-xs font-bold text-indigo-600">+ Add New</button>` : ""}
                   </div>
                   <textarea id="mq-text" rows="3" required placeholder="Question statement..."
-                    class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white outline-none">${escapeHtml(editQ?.text || '')}</textarea>
+                    class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white outline-none">${escapeHtml(editQ ? editQ.text : "")}</textarea>
                   <div class="space-y-2">
                     ${[0, 1, 2, 3].map(i => `
                       <div class="flex items-center gap-2">
                         <span class="w-7 h-7 rounded-lg bg-slate-200 text-slate-700 text-xs font-extrabold flex items-center justify-center shrink-0">${letters[i]}</span>
-                        <input id="mq-opt-${i}" type="text" required value="${escapeHtml(editQ?.options?.[i] || '')}" placeholder="Option ${letters[i]}"
+                        <input id="mq-opt-${i}" type="text" required value="${escapeHtml(editQ && editQ.options ? editQ.options[i] || "" : "")}" placeholder="Option ${letters[i]}"
                           class="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white outline-none" />
                       </div>
-                    `).join('')}
+                    `).join("")}
                   </div>
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <label class="block text-xs font-bold text-slate-600 mb-1">Correct Option</label>
-                      <select id="mq-ans" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white outline-none">
-                        ${[0, 1, 2, 3].map(i => `<option value="${i}" ${editQ?.correctIndex === i ? 'selected' : ''}>Option ${letters[i]}</option>`).join('')}
-                      </select>
-                    </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">Correct Option</label>
+                    <select id="mq-ans" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white outline-none">
+                      ${[0, 1, 2, 3].map(i => `<option value="${i}" ${editQ && editQ.correctIndex === i ? "selected" : ""}>Option ${letters[i]}</option>`).join("")}
+                    </select>
                   </div>
                   <textarea id="mq-exp" rows="2" placeholder="Explanation (optional)"
-                    class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white outline-none">${escapeHtml(editQ?.explanation || '')}</textarea>
+                    class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white outline-none">${escapeHtml(editQ ? editQ.explanation || "" : "")}</textarea>
                   <button type="submit" class="w-full py-2.5 rounded-xl text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white">
-                    ${editQ ? 'Update Question' : 'Add Question'}
+                    ${editQ ? "Update Question" : "Add Question"}
                   </button>
                 </form>
 
-                <!-- Existing Questions -->
                 <div class="lg:col-span-6 space-y-2.5">
                   <div class="flex items-center justify-between">
                     <h4 class="text-sm font-extrabold text-slate-900">Current Questions (${questions.length})</h4>
-                    ${exam.examType === 'html-omr' ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded bg-violet-100 text-violet-800">HTML Paper + OMR Active</span>' : ''}
+                    ${exam.examType === "html-omr" ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded bg-violet-100 text-violet-800">HTML Paper + OMR Active</span>' : ""}
                   </div>
                   ${questions.length === 0 ? `
                     <div class="p-8 rounded-2xl border border-dashed border-slate-300 text-center text-xs text-slate-500">
-                      No questions yet. Add manually or upload an HTML question paper above.
+                      No questions yet. Add manually or upload/paste an HTML question paper above.
                     </div>
                   ` : questions.map((q, idx) => `
-                    <div class="p-3.5 rounded-xl border ${editQIndex === idx ? 'border-indigo-500 bg-indigo-50/40' : 'border-slate-200 bg-white'}">
+                    <div class="p-3.5 rounded-xl border ${editQIndex === idx ? "border-indigo-500 bg-indigo-50/40" : "border-slate-200 bg-white"}">
                       <div class="flex items-start justify-between gap-2">
                         <p class="text-xs sm:text-sm font-bold text-slate-900"><span class="text-indigo-600">Q${idx + 1}.</span> ${escapeHtml(q.text)}</p>
                         <div class="flex items-center gap-1 shrink-0">
@@ -2667,9 +2759,9 @@
                           <button onclick="window.app.deleteQuestionFromExam('${examId}', ${idx})" class="px-2 py-1 rounded-lg text-[11px] font-bold bg-rose-50 text-rose-700">Del</button>
                         </div>
                       </div>
-                      <p class="text-xs text-emerald-700 font-semibold mt-1">Answer: ${letters[q.correctIndex]}${q.options?.[q.correctIndex] ? `. ${escapeHtml(q.options[q.correctIndex])}` : ''}</p>
+                      <p class="text-xs text-emerald-700 font-semibold mt-1">Answer: ${letters[q.correctIndex]}${q.options && q.options[q.correctIndex] ? ". " + escapeHtml(q.options[q.correctIndex]) : ""}</p>
                     </div>
-                  `).join('')}
+                  `).join("")}
                 </div>
               </div>
             </div>
@@ -2677,130 +2769,139 @@
         </div>
       `;
 
-      // Handle HTML Question Paper Upload
-      document.getElementById('exam-html-upload').onchange = (ev) => {
-        const file = ev.target.files?.[0];
+      const processExamHtml = (rawHtml, sourceLabel) => {
+        if (!rawHtml || !rawHtml.trim()) {
+          showToast("Please upload or paste valid HTML code first.", "warning");
+          return;
+        }
+        const parsedQs = parseHtmlQuestionPaper(rawHtml);
+        const previewBox = document.getElementById("html-upload-preview");
+        previewBox.classList.remove("hidden");
+
+        if (parsedQs.length > 0) {
+          previewBox.innerHTML = `
+            <div class="bg-white rounded-2xl border border-emerald-200 p-4 space-y-3">
+              <p class="text-xs sm:text-sm font-extrabold text-emerald-800">
+                &#10003; Auto-parsed ${parsedQs.length} MCQ questions from "${escapeHtml(sourceLabel)}"!
+              </p>
+              <div class="max-h-36 overflow-y-auto space-y-1.5 text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl">
+                ${parsedQs.map((pq, i) => `<div><strong>Q${i + 1}.</strong> ${escapeHtml(pq.text)} <span class="text-emerald-700 font-bold">[Ans: ${letters[pq.correctIndex]}]</span></div>`).join("")}
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="button" id="btn-import-append" class="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white">Append to Exam</button>
+                <button type="button" id="btn-import-replace" class="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-amber-400">Replace All Questions</button>
+              </div>
+            </div>
+          `;
+          document.getElementById("btn-import-append").onclick = async () => {
+            await updateExamQuestionsInStore(examId, [...questions, ...parsedQs], { examType: "structured", htmlPaperContent: "" });
+            showToast("Appended " + parsedQs.length + " questions!", "success");
+            setTimeout(() => openQuestionManagerModal(examId), 120);
+          };
+          document.getElementById("btn-import-replace").onclick = async () => {
+            await updateExamQuestionsInStore(examId, parsedQs, { examType: "structured", htmlPaperContent: "" });
+            showToast("Imported " + parsedQs.length + " questions!", "success");
+            setTimeout(() => openQuestionManagerModal(examId), 120);
+          };
+        } else {
+          let omrCount = 5;
+          const renderOmrBuilder = () => {
+            previewBox.innerHTML = `
+              <div class="bg-white rounded-2xl border border-amber-300 p-4 space-y-3">
+                <div>
+                  <p class="text-xs sm:text-sm font-extrabold text-amber-900">Custom HTML Question Paper Detected ("${escapeHtml(sourceLabel)}")</p>
+                  <p class="text-xs text-slate-600 mt-0.5">No <code class="font-mono">.mcq-item</code> tags found. Save this HTML paper with an interactive <strong>OMR Answer Key</strong> below:</p>
+                </div>
+                <div class="flex items-center gap-3">
+                  <label class="text-xs font-bold text-slate-700">Number of Questions:</label>
+                  <input id="omr-q-count" type="number" min="1" max="100" value="${omrCount}" class="w-20 px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-bold font-mono-num" />
+                  <button type="button" id="omr-gen-btn" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">Update Grid</button>
+                </div>
+                <div id="omr-key-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-2 max-h-44 overflow-y-auto p-1">
+                  ${Array.from({ length: omrCount }, (_, i) => `
+                    <div class="flex items-center justify-between gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
+                      <span class="text-xs font-bold font-mono-num text-slate-700">Q${i + 1}</span>
+                      <select data-omr-idx="${i}" class="omr-ans-select text-xs font-bold bg-white border border-slate-300 rounded px-1.5 py-0.5">
+                        <option value="0">A</option>
+                        <option value="1">B</option>
+                        <option value="2">C</option>
+                        <option value="3">D</option>
+                      </select>
+                    </div>
+                  `).join("")}
+                </div>
+                <button type="button" id="btn-save-html-omr" class="px-4 py-2.5 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white">
+                  Save HTML Question Paper + OMR Key
+                </button>
+              </div>
+            `;
+            document.getElementById("omr-gen-btn").onclick = () => {
+              omrCount = Math.max(1, Math.min(100, parseInt(document.getElementById("omr-q-count").value, 10) || 5));
+              renderOmrBuilder();
+            };
+            document.getElementById("btn-save-html-omr").onclick = async () => {
+              const selects = previewBox.querySelectorAll(".omr-ans-select");
+              const omrQs = Array.from(selects).map((sel, i) => ({
+                id: "omr-q-" + (i + 1),
+                text: "Question " + (i + 1) + " (Refer to HTML Question Paper)",
+                options: [],
+                correctIndex: parseInt(sel.value, 10),
+                explanation: ""
+              }));
+              try {
+                await updateExamQuestionsInStore(examId, omrQs, {
+                  examType: "html-omr",
+                  htmlPaperContent: rawHtml
+                });
+                showToast("HTML Question Paper + OMR Key saved!", "success");
+                setTimeout(() => openQuestionManagerModal(examId), 120);
+              } catch (err) {
+                console.error(err);
+                showToast("Failed to save HTML paper (ensure file is under 900KB).", "error");
+              }
+            };
+          };
+          renderOmrBuilder();
+        }
+      };
+
+      document.getElementById("exam-html-upload").onchange = (ev) => {
+        const file = ev.target.files && ev.target.files[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = () => {
-          const rawHtml = String(reader.result || '');
-          const parsedQs = parseHtmlQuestionPaper(rawHtml);
-          const previewBox = document.getElementById('html-upload-preview');
-          previewBox.classList.remove('hidden');
-
-          if (parsedQs.length > 0) {
-            // Smart Parsed Structured Questions
-            previewBox.innerHTML = `
-              <div class="bg-white rounded-2xl border border-emerald-200 p-4 space-y-3">
-                <div class="flex items-center justify-between gap-2">
-                  <p class="text-xs sm:text-sm font-extrabold text-emerald-800">
-                    &#10003; Auto-parsed ${parsedQs.length} MCQ questions from "${escapeHtml(file.name)}"!
-                  </p>
-                </div>
-                <div class="max-h-36 overflow-y-auto space-y-1.5 text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl">
-                  ${parsedQs.map((pq, i) => `<div><strong>Q${i + 1}.</strong> ${escapeHtml(pq.text)} <span class="text-emerald-700 font-bold">[Ans: ${letters[pq.correctIndex]}]</span></div>`).join('')}
-                </div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <button type="button" id="btn-import-append" class="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white">Append to Exam</button>
-                  <button type="button" id="btn-import-replace" class="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-amber-400">Replace All Questions</button>
-                </div>
-              </div>
-            `;
-            document.getElementById('btn-import-append').onclick = async () => {
-              await updateExamQuestionsInStore(examId, [...questions, ...parsedQs], { examType: 'structured', htmlPaperContent: '' });
-              showToast(`Appended ${parsedQs.length} questions!`, "success");
-              setTimeout(() => openQuestionManagerModal(examId), 120);
-            };
-            document.getElementById('btn-import-replace').onclick = async () => {
-              await updateExamQuestionsInStore(examId, parsedQs, { examType: 'structured', htmlPaperContent: '' });
-              showToast(`Imported ${parsedQs.length} questions!`, "success");
-              setTimeout(() => openQuestionManagerModal(examId), 120);
-            };
-          } else {
-            // Custom HTML Paper + OMR Answer Key Builder Fallback
-            let omrCount = 5;
-            const renderOmrBuilder = () => {
-              previewBox.innerHTML = `
-                <div class="bg-white rounded-2xl border border-amber-300 p-4 space-y-3">
-                  <div>
-                    <p class="text-xs sm:text-sm font-extrabold text-amber-900">Custom HTML Question Paper Detected ("${escapeHtml(file.name)}")</p>
-                    <p class="text-xs text-slate-600 mt-0.5">No <code class="font-mono">.mcq-item</code> tags found. Save this HTML paper with an interactive <strong>OMR Answer Key</strong> below:</p>
-                  </div>
-                  <div class="flex items-center gap-3">
-                    <label class="text-xs font-bold text-slate-700">Number of Questions:</label>
-                    <input id="omr-q-count" type="number" min="1" max="100" value="${omrCount}" class="w-20 px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-bold font-mono-num" />
-                    <button type="button" id="omr-gen-btn" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700">Update Grid</button>
-                  </div>
-                  <div id="omr-key-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-2 max-h-44 overflow-y-auto p-1">
-                    ${Array.from({ length: omrCount }, (_, i) => `
-                      <div class="flex items-center justify-between gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
-                        <span class="text-xs font-bold font-mono-num text-slate-700">Q${i + 1}</span>
-                        <select data-omr-idx="${i}" class="omr-ans-select text-xs font-bold bg-white border border-slate-300 rounded px-1.5 py-0.5">
-                          <option value="0">A</option>
-                          <option value="1">B</option>
-                          <option value="2">C</option>
-                          <option value="3">D</option>
-                        </select>
-                      </div>
-                    `).join('')}
-                  </div>
-                  <button type="button" id="btn-save-html-omr" class="px-4 py-2.5 rounded-xl text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white">
-                    Save HTML Question Paper + OMR Key
-                  </button>
-                </div>
-              `;
-              document.getElementById('omr-gen-btn').onclick = () => {
-                omrCount = Math.max(1, Math.min(100, parseInt(document.getElementById('omr-q-count').value, 10) || 5));
-                renderOmrBuilder();
-              };
-              document.getElementById('btn-save-html-omr').onclick = async () => {
-                const selects = previewBox.querySelectorAll('.omr-ans-select');
-                const omrQs = Array.from(selects).map((sel, i) => ({
-                  id: `omr-q-${i + 1}`,
-                  text: `Question ${i + 1} (Refer to HTML Question Paper)`,
-                  options: [],
-                  correctIndex: parseInt(sel.value, 10),
-                  explanation: ''
-                }));
-                try {
-                  await updateExamQuestionsInStore(examId, omrQs, {
-                    examType: 'html-omr',
-                    htmlPaperContent: rawHtml
-                  });
-                  showToast("HTML Question Paper + OMR Key saved!", "success");
-                  setTimeout(() => openQuestionManagerModal(examId), 120);
-                } catch (err) {
-                  console.error(err);
-                  showToast("Failed to save HTML paper (ensure file is under 900KB).", "error");
-                }
-              };
-            };
-            renderOmrBuilder();
-          }
+          const rawHtml = String(reader.result || "");
+          const pasteEl = document.getElementById("exam-html-paste");
+          if (pasteEl) pasteEl.value = rawHtml;
+          processExamHtml(rawHtml, file.name);
         };
         reader.readAsText(file);
       };
 
-      // Manual Question Form Submit
-      document.getElementById('manual-q-form').onsubmit = async (e) => {
+      document.getElementById("btn-load-pasted-exam-html").onclick = () => {
+        const pasted = document.getElementById("exam-html-paste")?.value || "";
+        processExamHtml(pasted, "Pasted HTML");
+      };
+
+      document.getElementById("manual-q-form").onsubmit = async (e) => {
         e.preventDefault();
         const newQ = {
-          id: editQ?.id || ('q-' + Date.now()),
-          text: document.getElementById('mq-text').value.trim(),
+          id: editQ && editQ.id ? editQ.id : "q-" + Date.now(),
+          text: document.getElementById("mq-text").value.trim(),
           options: [
-            document.getElementById('mq-opt-0').value.trim(),
-            document.getElementById('mq-opt-1').value.trim(),
-            document.getElementById('mq-opt-2').value.trim(),
-            document.getElementById('mq-opt-3').value.trim()
+            document.getElementById("mq-opt-0").value.trim(),
+            document.getElementById("mq-opt-1").value.trim(),
+            document.getElementById("mq-opt-2").value.trim(),
+            document.getElementById("mq-opt-3").value.trim()
           ],
-          correctIndex: parseInt(document.getElementById('mq-ans').value, 10),
-          explanation: document.getElementById('mq-exp').value.trim()
+          correctIndex: parseInt(document.getElementById("mq-ans").value, 10),
+          explanation: document.getElementById("mq-exp").value.trim()
         };
         const updated = [...questions];
         if (editQIndex !== null) updated[editQIndex] = newQ;
         else updated.push(newQ);
 
-        await updateExamQuestionsInStore(examId, updated, { examType: 'structured' });
+        await updateExamQuestionsInStore(examId, updated, { examType: "structured" });
         showToast(editQIndex !== null ? "Question updated!" : "Question added!", "success");
         setTimeout(() => openQuestionManagerModal(examId), 120);
       };
@@ -2808,10 +2909,10 @@
 
     // --- MASTER TAB 4: STUDENT RESULTS DASHBOARD + CSV EXPORT ---
     function renderMasterResultsTab() {
-      const uniqueExams = ['All', ...new Set(state.results.map(r => r.examTitle).filter(Boolean))];
+      const uniqueExams = ["All", ...new Set(state.results.map(r => r.examTitle).filter(Boolean))];
       const filtered = state.results.filter(r => {
-        const clsOk = state.masterResultClassFilter === 'All' || r.className === state.masterResultClassFilter;
-        const exOk = state.masterResultExamFilter === 'All' || r.examTitle === state.masterResultExamFilter;
+        const clsOk = state.masterResultClassFilter === "All" || r.className === state.masterResultClassFilter;
+        const exOk = state.masterResultExamFilter === "All" || r.examTitle === state.masterResultExamFilter;
         return clsOk && exOk;
       });
 
@@ -2821,7 +2922,6 @@
 
       return `
         <section class="space-y-4">
-          <!-- KPI Cards -->
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
             <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
               <p class="text-xs font-bold uppercase text-slate-500">Total Submissions</p>
@@ -2843,21 +2943,19 @@
             </div>
           </div>
 
-          <!-- Filters -->
           <div class="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row gap-3">
             <select onchange="window.app.setMasterResultClassFilter(this.value)"
               class="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold outline-none">
-              <option value="All" ${state.masterResultClassFilter === 'All' ? 'selected' : ''}>All Classes</option>
-              ${state.classes.map(c => `<option value="${escapeHtml(c.name)}" ${state.masterResultClassFilter === c.name ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+              <option value="All" ${state.masterResultClassFilter === "All" ? "selected" : ""}>All Classes</option>
+              ${state.classes.map(c => `<option value="${escapeHtml(c.name)}" ${state.masterResultClassFilter === c.name ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
             </select>
 
             <select onchange="window.app.setMasterResultExamFilter(this.value)"
               class="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold outline-none flex-1">
-              ${uniqueExams.map(exTitle => `<option value="${escapeHtml(exTitle)}" ${state.masterResultExamFilter === exTitle ? 'selected' : ''}>${exTitle === 'All' ? 'All Exams' : escapeHtml(exTitle)}</option>`).join('')}
+              ${uniqueExams.map(exTitle => `<option value="${escapeHtml(exTitle)}" ${state.masterResultExamFilter === exTitle ? "selected" : ""}>${exTitle === "All" ? "All Exams" : escapeHtml(exTitle)}</option>`).join("")}
             </select>
           </div>
 
-          <!-- Results Table -->
           <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
             ${filtered.length === 0 ? `
               <div class="p-12 text-center text-sm text-slate-500">No exam submissions found yet.</div>
@@ -2894,7 +2992,7 @@
                           <button onclick="window.app.confirmDeleteResult('${r.id}')" class="text-xs font-bold text-rose-600 hover:underline">Remove</button>
                         </td>
                       </tr>
-                    `).join('')}
+                    `).join("")}
                   </tbody>
                 </table>
               </div>
@@ -2905,66 +3003,6 @@
     }
 
     // =========================================================================
-    // 14. SAMPLE HTML TEMPLATES FOR TEACHER DOWNLOAD
-    // =========================================================================
-    const SAMPLE_NOTE_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <style>
-    body { font-family: system-ui, sans-serif; color: #1e293b; line-height: 1.65; padding: 20px; max-width: 800px; margin: auto; }
-    h1 { color: #312e81; border-bottom: 2px solid #e0e7ff; padding-bottom: 8px; }
-    .formula-box { background: #eef2ff; border-left: 4px solid #4f46e5; padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-family: monospace; font-size: 15px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; }
-    th { background: #f8fafc; }
-  </style>
-</head>
-<body>
-  <h1>Wave Optics — Interference of Light</h1>
-  <p>When two coherent light waves superpose, they redistribute intensity into alternating bright (constructive) and dark (destructive) fringes.</p>
-  <div class="formula-box">Fringe Width: β = (λ · D) / d</div>
-  <table>
-    <tr><th>Interference Type</th><th>Path Difference (Δx)</th><th>Intensity</th></tr>
-    <tr><td>Constructive (Bright)</td><td>nλ (n = 0, 1, 2...)</td><td>Maximum</td></tr>
-    <tr><td>Destructive (Dark)</td><td>(2n + 1)λ / 2</td><td>Minimum</td></tr>
-  </table>
-</body>
-</html>`;
-
-    const SAMPLE_QUESTION_PAPER_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Sample Physics MCQ Question Paper</title>
-</head>
-<body>
-  <!-- Use class="mcq-item" and data-answer="A/B/C/D" for automatic interactive MCQ parsing -->
-  <div class="mcq-item" data-answer="B">
-    <p class="question-text">What is the SI unit of capacitance?</p>
-    <ul>
-      <li class="option">Henry</li>
-      <li class="option">Farad</li>
-      <li class="option">Tesla</li>
-      <li class="option">Weber</li>
-    </ul>
-    <p class="explanation">Capacitance is measured in Farads (F), equal to 1 Coulomb per Volt.</p>
-  </div>
-
-  <div class="mcq-item" data-answer="C">
-    <p class="question-text">A capacitor of 4 μF is charged to 100 V. What is the energy stored in it?</p>
-    <ul>
-      <li class="option">0.01 J</li>
-      <li class="option">0.04 J</li>
-      <li class="option">0.02 J</li>
-      <li class="option">0.20 J</li>
-    </ul>
-    <p class="explanation">U = (1/2) C V² = 0.5 × 4×10⁻⁶ × 100² = 0.02 J.</p>
-  </div>
-</body>
-</html>`;
-
-    // =========================================================================
     // 15. EXPOSED PUBLIC HANDLERS
     // =========================================================================
     window.app = {
@@ -2973,25 +3011,29 @@
 
       async handleStudentLogin(e) {
         e.preventDefault();
-        const nameInput = document.getElementById('login-student-name').value.trim();
-        const classSelect = document.getElementById('login-student-class').value;
+        const nameInput = document.getElementById("login-student-name").value.trim();
+        const classSelect = document.getElementById("login-student-class").value;
         if (!nameInput || !classSelect) {
           showToast("Please enter your name and select a class.", "warning");
           return;
         }
-        await persistStudentSession({ name: nameInput, className: classSelect });
-        state.studentTab = 'chapters';
-        state.studentSubjectFilter = 'All';
-        state.studentSearch = '';
-        state.view = 'student-home';
-        pushNavState('student-home');
+        await persistStudentSession({
+          name: nameInput,
+          className: classSelect,
+          loggedInAt: Date.now()
+        });
+        state.studentTab = "chapters";
+        state.studentSubjectFilter = "All";
+        state.studentSearch = "";
+        state.view = "student-home";
+        ensureHomeGuard();
         renderApp();
-        showToast(`Welcome, ${nameInput}!`, "success");
+        showToast("Welcome, " + nameInput + "!", "success");
       },
 
       handleStudentLogout() {
         showConfirmModal({
-          title: "Logout from Student Portal?",
+          title: "Logout / Switch Student?",
           message: "You will be returned to the Login screen where you can sign in with a different name or class.",
           confirmText: "Logout",
           confirmStyle: "danger",
@@ -2999,14 +3041,15 @@
             clearExamTimer();
             state.examSession = null;
             await persistStudentSession(null);
-            state.view = 'login';
+            state.view = "login";
             renderApp();
           }
         });
       },
 
       exitMasterMode() {
-        state.view = state.studentSession ? 'student-home' : 'login';
+        state.view = state.studentSession ? "student-home" : "login";
+        if (state.view === "student-home") ensureHomeGuard();
         renderApp();
       },
 
@@ -3023,7 +3066,7 @@
       setStudentSearch(val) {
         state.studentSearch = val;
         renderApp();
-        const el = document.getElementById('student-ch-search');
+        const el = document.getElementById("student-ch-search");
         if (el) {
           el.focus();
           el.setSelectionRange(val.length, val.length);
@@ -3032,16 +3075,17 @@
 
       openChapterReader(chapterId) {
         state.activeChapterId = chapterId;
-        state.view = 'chapter-reader';
-        pushNavState('chapter-reader');
+        state.view = "chapter-reader";
+        pushNavState("chapter-reader");
         renderApp();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.scrollTo({ top: 0, behavior: "smooth" });
       },
 
       backToStudentHome() {
         state.activeChapterId = null;
         state.lastResultView = null;
-        state.view = state.studentSession ? 'student-home' : 'login';
+        state.view = state.studentSession ? "student-home" : "login";
+        if (state.view === "student-home") ensureHomeGuard();
         renderApp();
       },
 
@@ -3049,7 +3093,6 @@
         toggleChapterCompleted(chapterId);
       },
 
-      // Exam Runner
       startOrResumeExam,
       pauseAndReturnHome,
 
@@ -3096,14 +3139,13 @@
         const ans = Object.keys(sess.answers).length;
         showConfirmModal({
           title: "Submit Timed Exam?",
-          message: `You have answered ${ans} of ${total} questions (${total - ans} unanswered). Marking: +4 Correct, -1 Wrong, 0 Unattempted.`,
+          message: "You have answered " + ans + " of " + total + " questions (" + (total - ans) + " unanswered). Marking: +4 Correct, -1 Wrong, 0 Unattempted.",
           confirmText: "Submit Exam",
           confirmStyle: "primary",
           onConfirm: () => finalizeExamSubmission()
         });
       },
 
-      // Master Panel
       setMasterTab(tab) {
         state.masterTab = tab;
         renderApp();
@@ -3111,15 +3153,15 @@
 
       async handleAddClass(e) {
         e.preventDefault();
-        const name = document.getElementById('new-class-name').value.trim();
-        const allowMcq = document.getElementById('new-class-mcq').checked;
+        const name = document.getElementById("new-class-name").value.trim();
+        const allowMcq = document.getElementById("new-class-mcq").checked;
         if (!name) return;
         if (state.classes.some(c => c.name.toLowerCase() === name.toLowerCase())) {
           showToast("A class with that name already exists.", "warning");
           return;
         }
         await saveClassToStore({ name, allowMcq });
-        showToast(`"${name}" added!`, "success");
+        showToast("\"" + name + "\" added!", "success");
       },
 
       async toggleClassMcq(classId, newVal) {
@@ -3129,13 +3171,13 @@
 
       confirmDeleteClass(classId, className) {
         showConfirmModal({
-          title: `Delete ${className}?`,
+          title: "Delete " + className + "?",
           message: "Students will no longer see this class in the login dropdown.",
           confirmText: "Delete Class",
           confirmStyle: "danger",
           onConfirm: async () => {
             await deleteClassFromStore(classId);
-            showToast(`${className} removed.`, "info");
+            showToast(className + " removed.", "info");
           }
         });
       },
@@ -3215,8 +3257,8 @@
 
       exportResultsCsv() {
         const filtered = state.results.filter(r => {
-          const clsOk = state.masterResultClassFilter === 'All' || r.className === state.masterResultClassFilter;
-          const exOk = state.masterResultExamFilter === 'All' || r.examTitle === state.masterResultExamFilter;
+          const clsOk = state.masterResultClassFilter === "All" || r.className === state.masterResultClassFilter;
+          const exOk = state.masterResultExamFilter === "All" || r.examTitle === state.masterResultExamFilter;
           return clsOk && exOk;
         });
         if (filtered.length === 0) {
@@ -3225,31 +3267,21 @@
         }
         const headers = ["Student Name", "Class", "Exam Title", "Subject", "Score", "Max Marks", "Correct (+4)", "Wrong (-1)", "Unanswered (0)", "Accuracy (%)", "Date"];
         const rows = filtered.map(r => [
-          `"${(r.studentName || '').replace(/"/g, '""')}"`,
-          `"${(r.className || '').replace(/"/g, '""')}"`,
-          `"${(r.examTitle || '').replace(/"/g, '""')}"`,
-          `"${(r.subject || '').replace(/"/g, '""')}"`,
+          '"' + (r.studentName || "").replace(/"/g, '""') + '"',
+          '"' + (r.className || "").replace(/"/g, '""') + '"',
+          '"' + (r.examTitle || "").replace(/"/g, '""') + '"',
+          '"' + (r.subject || "").replace(/"/g, '""') + '"',
           r.totalScore,
           r.maxMarks,
           r.correctCount,
           r.wrongCount,
           r.unansweredCount,
           r.accuracy,
-          `"${formatDate(r.submittedAt)}"`
+          '"' + formatDate(r.submittedAt) + '"'
         ]);
-        const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-        downloadTextFile(`EduMaster_Results_${new Date().toISOString().slice(0, 10)}.csv`, csv, 'text/csv;charset=utf-8');
+        const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+        downloadTextFile("EduMaster_Results_" + new Date().toISOString().slice(0, 10) + ".csv", csv, "text/csv;charset=utf-8");
         showToast("Results exported to CSV!", "success");
-      },
-
-      downloadSampleNoteHtml() {
-        downloadTextFile("Sample_Study_Note.html", SAMPLE_NOTE_HTML);
-        showToast("Downloaded Sample_Study_Note.html", "info");
-      },
-
-      downloadSampleQuestionHtml() {
-        downloadTextFile("Sample_MCQ_Question_Paper.html", SAMPLE_QUESTION_PAPER_HTML);
-        showToast("Downloaded Sample_MCQ_Question_Paper.html", "info");
       }
     };
 
