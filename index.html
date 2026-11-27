@@ -17,8 +17,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
+  <!-- KaTeX for Math & Science LaTeX Equations -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+
   <script>
     tailwind.config = {
+      darkMode: 'class',
       theme: {
         extend: {
           fontFamily: {
@@ -70,9 +76,57 @@
       padding-bottom: max(20px, env(safe-area-inset-bottom));
     }
 
+    /* Smooth Dark Mode Theme Overrides */
+    html.dark, html.dark body {
+      background: #0b1120;
+      color: #f1f5f9;
+    }
+    html.dark .bg-slate-50 { background-color: #0b1120 !important; }
+    html.dark .bg-white { background-color: #111827 !important; }
+    html.dark .bg-slate-100 { background-color: #1e293b !important; }
+    html.dark .border-slate-200 { border-color: #1f2937 !important; }
+    html.dark .border-slate-300 { border-color: #334155 !important; }
+    html.dark .border-slate-100 { border-color: #1f2937 !important; }
+    html.dark .text-slate-900 { color: #f8fafc !important; }
+    html.dark .text-slate-800 { color: #e2e8f0 !important; }
+    html.dark .text-slate-700 { color: #cbd5e1 !important; }
+    html.dark .text-slate-600 { color: #94a3b8 !important; }
+    html.dark .text-slate-500 { color: #94a3b8 !important; }
+    html.dark input, html.dark select, html.dark textarea {
+      background-color: #0f172a !important;
+      color: #f8fafc !important;
+      border-color: #334155 !important;
+    }
+
+    /* Toggle Switch Styling */
+    .toggle-track {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      width: 42px;
+      height: 24px;
+      border-radius: 999px;
+      transition: background-color 0.2s ease;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .toggle-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+      transform: translateX(3px);
+      transition: transform 0.2s ease;
+    }
+    .toggle-track.on .toggle-thumb {
+      transform: translateX(21px);
+    }
+
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+    html.dark ::-webkit-scrollbar-thumb { background: #334155; }
   </style>
 </head>
 <body>
@@ -88,12 +142,13 @@
       // 1. CLOUD DATABASE & MASTER CONFIG
       // =======================================================================
       const CLOUD_API_URL = "https://script.google.com/macros/s/AKfycbxToVwIQd2XfDVLdeJ9yhukMdPGLvW85nn4HKa0P7S39QRNRv-59ZVoaBjVYgP-ijw6/exec";
-      const MASTER_PIN = "1243";
+      const DEFAULT_MASTER_PIN = "1234";
 
       const CACHE_KEY = "edumaster_cloud_cache_v3";
       const SESSION_KEY = "edumaster_student_session_v2";
       const RESUME_KEY = "edumaster_exam_resume_v2";
       const COMPLETED_KEY = "edumaster_completed_chapters_v2";
+      const THEME_KEY = "edumaster_theme_v1";
 
       const LETTERS = ["A", "B", "C", "D"];
 
@@ -106,15 +161,24 @@
           chapters: [],
           exams: [],
           results: [],
-          retakePermissions: {} // { "examId::normalizedStudentName": timestampMs }
+          retakePermissions: {}, // { "examId::normalizedStudentName": timestampMs }
+          students: [], // [{ id, name, normName, classId, className, firstLoginAt, lastLoginAt, loginCount }]
+          expelledStudents: {}, // { normName: { name, className, reason, expelledAt } }
+          notices: [], // [{ id, title, message, classId, createdAt }]
+          doubts: [], // [{ id, studentName, classId, className, contextTitle, question, reply, createdAt, repliedAt }]
+          settings: {
+            masterPin: DEFAULT_MASTER_PIN,
+            leaderboardEnabled: true
+          }
         },
         syncStatus: "syncing", // 'synced' | 'syncing' | 'offline'
+        darkMode: false,
         student: null, // { name, classId, className, loggedInAt }
         completedChapters: {}, // { chapterId: true }
 
         // Navigation & Views
-        view: "login", // 'login' | 'home' | 'note' | 'exam' | 'results' | 'master'
-        homeTab: "chapters", // 'chapters' | 'exams'
+        view: "login", // 'login' | 'home' | 'note' | 'exam' | 'results' | 'master' | 'expelled'
+        homeTab: "chapters", // 'chapters' | 'exams' | 'myresults' | 'doubts'
         homeSubjectFilter: "All",
         homeSearch: "",
 
@@ -122,7 +186,7 @@
         activeChapterId: null,
 
         // Active Timed Exam
-        activeExam: null, // { examId, currentIndex, answers: {}, flagged: {}, timeLeft, totalSeconds, startedAt }
+        activeExam: null, // { examId, currentIndex, questionOrder, answers, flagged, timeLeft, totalSeconds, startedAt, tabSwitches, pendingSwitchWarning }
         examTimerId: null,
         paletteOpen: false,
 
@@ -131,14 +195,17 @@
 
         // Master Panel
         masterAuthed: false,
-        masterTab: "classes", // 'classes' | 'chapters' | 'exams' | 'results'
+        masterTab: "classes", // 'classes' | 'chapters' | 'exams' | 'results' | 'students' | 'notices' | 'settings'
         masterClassFilter: "all",
         masterResultClassFilter: "all",
-        masterResultExamFilter: "all"
+        masterResultExamFilter: "all",
+        masterStudentClassFilter: "all",
+        masterStudentSearch: "",
+        masterStudentStatusFilter: "all" // 'all' | 'active' | 'expelled'
       };
 
       // =======================================================================
-      // 3. UTILITIES
+      // 3. UTILITIES & THEME / MATH HELPERS
       // =======================================================================
       function escapeHtml(str) {
         if (str === null || str === undefined) return "";
@@ -161,6 +228,48 @@
         return String(m).padStart(2, "0") + ":" + String(r).padStart(2, "0");
       }
 
+      function formatDateTime(isoOrMs) {
+        if (!isoOrMs) return "—";
+        const d = new Date(isoOrMs);
+        if (isNaN(d.getTime())) return "—";
+        return d.toLocaleString(undefined, {
+          day: "2-digit", month: "short", year: "numeric",
+          hour: "2-digit", minute: "2-digit"
+        });
+      }
+
+      function applyTheme(isDark) {
+        state.darkMode = !!isDark;
+        if (state.darkMode) document.documentElement.classList.add("dark");
+        else document.documentElement.classList.remove("dark");
+        try { localStorage.setItem(THEME_KEY, state.darkMode ? "dark" : "light"); } catch (e) {}
+      }
+
+      function loadSavedTheme() {
+        try {
+          const saved = localStorage.getItem(THEME_KEY);
+          applyTheme(saved === "dark");
+        } catch (e) {}
+      }
+
+      function renderMathInContainer(el) {
+        if (!el || typeof window.renderMathInElement !== "function") return;
+        try {
+          window.renderMathInElement(el, {
+            delimiters: [
+              { left: "$$", right: "$$", display: true },
+              { left: "$", right: "$", display: false }
+            ],
+            throwOnError: false
+          });
+        } catch (e) {}
+      }
+
+      function getActiveMasterPin() {
+        const p = state.db.settings && state.db.settings.masterPin;
+        return (p && String(p).trim()) ? String(p).trim() : DEFAULT_MASTER_PIN;
+      }
+
       function showToast(message, type) {
         const container = document.getElementById("toast-container");
         if (!container) return;
@@ -178,7 +287,7 @@
           el.style.opacity = "0";
           el.style.transition = "opacity 0.25s ease";
           setTimeout(() => el.remove(), 260);
-        }, 2800);
+        }, 3200);
       }
 
       function closeModal() {
@@ -260,21 +369,29 @@
         } catch (e) {}
       }
 
+      function hydrateDbObject(parsed) {
+        if (!parsed || typeof parsed !== "object") return;
+        state.db.classes = Array.isArray(parsed.classes) ? parsed.classes : [];
+        state.db.chapters = Array.isArray(parsed.chapters) ? parsed.chapters : [];
+        state.db.exams = Array.isArray(parsed.exams) ? parsed.exams : [];
+        state.db.results = Array.isArray(parsed.results) ? parsed.results : [];
+        state.db.retakePermissions = (parsed.retakePermissions && typeof parsed.retakePermissions === "object")
+          ? parsed.retakePermissions : {};
+        state.db.students = Array.isArray(parsed.students) ? parsed.students : [];
+        state.db.expelledStudents = (parsed.expelledStudents && typeof parsed.expelledStudents === "object")
+          ? parsed.expelledStudents : {};
+        state.db.notices = Array.isArray(parsed.notices) ? parsed.notices : [];
+        state.db.doubts = Array.isArray(parsed.doubts) ? parsed.doubts : [];
+        state.db.settings = {
+          masterPin: (parsed.settings && parsed.settings.masterPin) ? String(parsed.settings.masterPin) : DEFAULT_MASTER_PIN,
+          leaderboardEnabled: (parsed.settings && parsed.settings.leaderboardEnabled !== undefined) ? !!parsed.settings.leaderboardEnabled : true
+        };
+      }
+
       function loadCacheDb() {
         try {
           const raw = localStorage.getItem(CACHE_KEY);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === "object") {
-              state.db.classes = Array.isArray(parsed.classes) ? parsed.classes : [];
-              state.db.chapters = Array.isArray(parsed.chapters) ? parsed.chapters : [];
-              state.db.exams = Array.isArray(parsed.exams) ? parsed.exams : [];
-              state.db.results = Array.isArray(parsed.results) ? parsed.results : [];
-              state.db.retakePermissions = (parsed.retakePermissions && typeof parsed.retakePermissions === "object")
-                ? parsed.retakePermissions
-                : {};
-            }
-          }
+          if (raw) hydrateDbObject(JSON.parse(raw));
         } catch (e) {}
       }
 
@@ -316,13 +433,10 @@
 
       function resolveStudentClass(student, classes) {
         if (!student || !Array.isArray(classes) || classes.length === 0) return null;
-        // 1. Exact ID match
         let found = classes.find(c => c.id === student.classId);
         if (found) return found;
-        // 2. Exact or normalized Name match
         found = classes.find(c => c.name === student.className || classKeysMatch(c.name, student.className));
         if (found) return found;
-        // 3. Normalized ID / cross-field match
         found = classes.find(c =>
           classKeysMatch(c.id, student.classId) ||
           classKeysMatch(c.id, student.className) ||
@@ -359,13 +473,81 @@
         return false;
       }
 
-      // Exam Retake Lock & Master Permission Helpers
+      // Student Registry (First Login Tracking) & Expulsion Enforcement
       function normalizeStudentName(name) {
         return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
       }
 
+      function getExpulsionRecord(studentName) {
+        const norm = normalizeStudentName(studentName);
+        if (!norm || !state.db.expelledStudents) return null;
+        return state.db.expelledStudents[norm] || null;
+      }
+
+      function isStudentExpelled(studentName) {
+        return !!getExpulsionRecord(studentName);
+      }
+
+      function recordStudentLoginInDb(name, cls, firstTimeOverride) {
+        const normName = normalizeStudentName(name);
+        if (!normName) return false;
+        state.db.students = Array.isArray(state.db.students) ? state.db.students : [];
+        const nowIso = new Date().toISOString();
+        const existing = state.db.students.find(s => s.normName === normName);
+        if (existing) {
+          existing.name = name;
+          existing.classId = cls.id;
+          existing.className = cls.name;
+          existing.lastLoginAt = nowIso;
+          existing.loginCount = (Number(existing.loginCount) || 1) + 1;
+          return true;
+        } else {
+          state.db.students.unshift({
+            id: uid("stu"),
+            name,
+            normName,
+            classId: cls.id,
+            className: cls.name,
+            firstLoginAt: firstTimeOverride ? new Date(firstTimeOverride).toISOString() : nowIso,
+            lastLoginAt: nowIso,
+            loginCount: 1
+          });
+          return true;
+        }
+      }
+
+      // Exam Retake Lock, Schedule Window, & Marking Helpers
       function getRetakeKey(examId, studentName) {
         return String(examId || "") + "::" + normalizeStudentName(studentName);
+      }
+
+      function getExamMarking(exam) {
+        const c = (exam && exam.markingCorrect !== undefined && exam.markingCorrect !== null) ? Number(exam.markingCorrect) : 4;
+        const w = (exam && exam.markingWrong !== undefined && exam.markingWrong !== null) ? Number(exam.markingWrong) : 1;
+        return {
+          correct: Number.isFinite(c) ? c : 4,
+          wrong: Number.isFinite(w) ? Math.abs(w) : 1
+        };
+      }
+
+      function getExamScheduleStatus(exam) {
+        if (!exam || !exam.scheduleEnabled) {
+          return { allowed: true, status: "anytime", label: "Available Anytime" };
+        }
+        const now = Date.now();
+        const startMs = exam.startTime ? Date.parse(exam.startTime) : NaN;
+        const endMs = exam.endTime ? Date.parse(exam.endTime) : NaN;
+
+        if (Number.isFinite(startMs) && now < startMs) {
+          return { allowed: false, status: "upcoming", label: "Starts " + formatDateTime(startMs) };
+        }
+        if (Number.isFinite(endMs) && now > endMs) {
+          return { allowed: false, status: "ended", label: "Closed " + formatDateTime(endMs) };
+        }
+        if (Number.isFinite(endMs)) {
+          return { allowed: true, status: "live", label: "Live until " + formatDateTime(endMs) };
+        }
+        return { allowed: true, status: "live", label: "Scheduled Live" };
       }
 
       function getExamAttemptStatus(examId, studentName) {
@@ -407,18 +589,23 @@
           if (!resp.ok) throw new Error("HTTP " + resp.status);
           const data = await resp.json();
           if (data && typeof data === "object") {
-            state.db.classes = Array.isArray(data.classes) ? data.classes : [];
-            state.db.chapters = Array.isArray(data.chapters) ? data.chapters : [];
-            state.db.exams = Array.isArray(data.exams) ? data.exams : [];
-            state.db.results = Array.isArray(data.results) ? data.results : [];
-            state.db.retakePermissions = (data.retakePermissions && typeof data.retakePermissions === "object")
-              ? data.retakePermissions
-              : {};
-
+            hydrateDbObject(data);
             const seeded = ensureDefaultClassesIfEmpty();
             saveCacheDb();
             reconcileStudentSession();
-            if (seeded) {
+
+            // Auto-register existing logged-in student if not yet in students registry
+            let needPush = seeded;
+            if (state.student && !isStudentExpelled(state.student.name)) {
+              const norm = normalizeStudentName(state.student.name);
+              const exists = state.db.students.some(s => s.normName === norm);
+              if (!exists) {
+                const resolved = resolveStudentClass(state.student, state.db.classes) || { id: state.student.classId, name: state.student.className };
+                recordStudentLoginInDb(state.student.name, resolved, state.student.loggedInAt);
+                needPush = true;
+              }
+            }
+            if (needPush) {
               await pushAllToCloud(true);
             }
           }
@@ -429,6 +616,15 @@
           reconcileStudentSession();
           state.syncStatus = "offline";
           if (showNotification) showToast("Using offline cache. Check internet connection.", "warning");
+        }
+
+        // Enforce expulsion immediately if active student was expelled by Master
+        if (state.student && !state.masterAuthed && isStudentExpelled(state.student.name)) {
+          stopExamTimer();
+          state.activeExam = null;
+          state.view = "expelled";
+        } else if (state.view === "expelled" && state.student && !isStudentExpelled(state.student.name)) {
+          state.view = "home";
         }
         render();
       }
@@ -518,7 +714,6 @@
         const route = parts[0] || "";
         const param = parts.slice(1).join("/");
 
-        // If user navigated away from an active exam via Back button, pause & save it
         if (state.view === "exam" && route !== "exam" && state.activeExam) {
           pauseAndSaveActiveExam(false);
         }
@@ -532,7 +727,6 @@
             render();
             return;
           } else {
-            // Redirect back to home or login if not authenticated
             state.view = state.student ? "home" : "login";
             if (state.student) window.location.replace("#home");
             else window.location.replace("#login");
@@ -543,6 +737,15 @@
 
         if (!state.student) {
           state.view = "login";
+          render();
+          return;
+        }
+
+        // Block expelled students on all student routes
+        if (isStudentExpelled(state.student.name)) {
+          stopExamTimer();
+          state.activeExam = null;
+          state.view = "expelled";
           render();
           return;
         }
@@ -570,6 +773,14 @@
               render();
               return;
             }
+            const sched = getExamScheduleStatus(exam);
+            if (!sched.allowed) {
+              showToast("Exam is not open right now (" + sched.label + ").", "warning");
+              state.view = "home";
+              try { history.replaceState(null, "", "#home"); } catch (e) {}
+              render();
+              return;
+            }
             if (!state.activeExam || state.activeExam.examId !== exam.id) {
               initExamSession(exam);
             }
@@ -586,19 +797,15 @@
           return;
         }
 
-        // Default to Home when logged in
         state.view = "home";
         if (window.location.hash !== "#home") {
-          try {
-            history.replaceState(null, "", "#home");
-          } catch (e) {}
+          try { history.replaceState(null, "", "#home"); } catch (e) {}
         }
         render();
       }
 
       window.addEventListener("hashchange", applyRouteFromHash);
 
-      // Expose global hook for native Android Studio WebView wrappers
       window.handleAndroidBack = function () {
         if (document.getElementById("modal-root") && document.getElementById("modal-root").innerHTML.trim() !== "") {
           closeModal();
@@ -622,7 +829,6 @@
         return false;
       };
 
-      // Auto-save active exam if app goes to background or page hides
       function autoSaveExamOnBackground() {
         if (state.view === "exam" && state.activeExam) {
           saveExamResume({
@@ -634,14 +840,58 @@
         }
       }
 
+      // Tab-Switch / App-Switch Anti-Cheating Monitor
       document.addEventListener("visibilitychange", () => {
-        if (document.hidden) autoSaveExamOnBackground();
+        if (state.view !== "exam" || !state.activeExam) return;
+        const exam = state.db.exams.find(e => e.id === state.activeExam.examId);
+        const limit = (exam && exam.tabSwitchLimit !== undefined) ? Number(exam.tabSwitchLimit) : 3;
+
+        if (document.hidden) {
+          state.activeExam.tabSwitches = (state.activeExam.tabSwitches || 0) + 1;
+          state.activeExam.pendingSwitchWarning = true;
+          autoSaveExamOnBackground();
+        } else if (state.activeExam.pendingSwitchWarning) {
+          state.activeExam.pendingSwitchWarning = false;
+          const count = state.activeExam.tabSwitches || 1;
+          if (limit > 0) {
+            if (count >= limit) {
+              showToast("Tab/App switch limit (" + limit + ") reached! Auto-submitting exam.", "error");
+              submitActiveExam();
+            } else {
+              showToast("Warning " + count + "/" + limit + ": Leaving the exam screen is monitored!", "warning");
+              render();
+            }
+          }
+        }
       });
       window.addEventListener("pagehide", autoSaveExamOnBackground);
 
       // =======================================================================
-      // 6. EXAM ENGINE (+4 / -1 / 0 MARKING, TIMER, RESUME)
+      // 6. EXAM ENGINE (CUSTOM MARKING, SHUFFLE, TIMER, RESUME)
       // =======================================================================
+      function shuffleArray(arr) {
+        const a = arr.slice();
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const t = a[i];
+          a[i] = a[j];
+          a[j] = t;
+        }
+        return a;
+      }
+
+      function buildQuestionOrder(exam) {
+        const qs = Array.isArray(exam.questions) ? exam.questions : [];
+        let order = qs.map((_, idx) => ({
+          qIdx: idx,
+          optOrder: exam.shuffleEnabled ? shuffleArray([0, 1, 2, 3]) : [0, 1, 2, 3]
+        }));
+        if (exam.shuffleEnabled) {
+          order = shuffleArray(order);
+        }
+        return order;
+      }
+
       function stopExamTimer() {
         if (state.examTimerId) {
           clearInterval(state.examTimerId);
@@ -651,26 +901,34 @@
 
       function initExamSession(exam) {
         const saved = getSavedResume();
-        if (saved && saved.examId === exam.id && state.student && saved.classId === state.student.classId) {
+        const qCount = (exam.questions || []).length;
+        if (saved && saved.examId === exam.id && state.student && saved.classId === state.student.classId &&
+            Array.isArray(saved.questionOrder) && saved.questionOrder.length === qCount) {
           state.activeExam = {
             examId: exam.id,
-            currentIndex: Math.min(saved.currentIndex || 0, Math.max(0, (exam.questions || []).length - 1)),
+            currentIndex: Math.min(saved.currentIndex || 0, Math.max(0, qCount - 1)),
+            questionOrder: saved.questionOrder,
             answers: saved.answers || {},
             flagged: saved.flagged || {},
             timeLeft: typeof saved.timeLeft === "number" ? saved.timeLeft : (Number(exam.durationMins) || 15) * 60,
             totalSeconds: (Number(exam.durationMins) || 15) * 60,
-            startedAt: saved.startedAt || Date.now()
+            startedAt: saved.startedAt || Date.now(),
+            tabSwitches: Number(saved.tabSwitches) || 0,
+            pendingSwitchWarning: false
           };
         } else {
           const totalSec = (Number(exam.durationMins) || 15) * 60;
           state.activeExam = {
             examId: exam.id,
             currentIndex: 0,
+            questionOrder: buildQuestionOrder(exam),
             answers: {},
             flagged: {},
             timeLeft: totalSec,
             totalSeconds: totalSec,
-            startedAt: Date.now()
+            startedAt: Date.now(),
+            tabSwitches: 0,
+            pendingSwitchWarning: false
           };
         }
       }
@@ -705,19 +963,32 @@
         if (!exam) return;
 
         const questions = Array.isArray(exam.questions) ? exam.questions : [];
+        const order = Array.isArray(state.activeExam.questionOrder) && state.activeExam.questionOrder.length === questions.length
+          ? state.activeExam.questionOrder
+          : questions.map((_, idx) => ({ qIdx: idx, optOrder: [0, 1, 2, 3] }));
+
+        const marking = getExamMarking(exam);
         let correct = 0;
         let wrong = 0;
         let unattempted = 0;
 
-        const breakdown = questions.map((q, idx) => {
-          const selected = state.activeExam.answers[idx];
+        // Grade in original question order for clean analytics
+        const answerByOrigIdx = {};
+        order.forEach((entry, stepIdx) => {
+          if (state.activeExam.answers[stepIdx] !== undefined && state.activeExam.answers[stepIdx] !== null) {
+            answerByOrigIdx[entry.qIdx] = Number(state.activeExam.answers[stepIdx]);
+          }
+        });
+
+        const breakdown = questions.map((q, origIdx) => {
+          const selected = answerByOrigIdx[origIdx];
           const isAttempted = selected !== undefined && selected !== null;
           const isCorrect = isAttempted && Number(selected) === Number(q.correctIndex);
           if (!isAttempted) unattempted++;
           else if (isCorrect) correct++;
           else wrong++;
           return {
-            index: idx,
+            index: origIdx,
             text: q.text,
             options: q.options || ["", "", "", ""],
             correctIndex: Number(q.correctIndex) || 0,
@@ -727,8 +998,8 @@
           };
         });
 
-        const score = (correct * 4) - (wrong * 1);
-        const maxMarks = questions.length * 4;
+        const score = (correct * marking.correct) - (wrong * marking.wrong);
+        const maxMarks = questions.length * marking.correct;
         const attempted = correct + wrong;
         const accuracy = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
 
@@ -745,6 +1016,9 @@
           examId: exam.id,
           examTitle: exam.title,
           subject: exam.subject || "",
+          markingCorrect: marking.correct,
+          markingWrong: marking.wrong,
+          tabSwitches: Number(state.activeExam.tabSwitches) || 0,
           score,
           maxMarks,
           correct,
@@ -760,9 +1034,7 @@
         state.paletteOpen = false;
         saveExamResume(null);
 
-        // Push result to Google Sheet + Drive
         pushResultToCloud(resultObj);
-
         navigateToHash("#results");
       }
 
@@ -866,6 +1138,15 @@
       // =======================================================================
       // 9. RENDER VIEWS (FLEX COLUMN APP SHELL)
       // =======================================================================
+      function renderThemeButton() {
+        return `
+          <button onclick="window.portal.toggleDarkMode()" title="Toggle Dark Mode"
+            class="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 shrink-0">
+            ${state.darkMode ? "☀️" : "🌙"}
+          </button>
+        `;
+      }
+
       function render() {
         const app = document.getElementById("app");
         if (!app) return;
@@ -873,6 +1154,8 @@
         if (state.view === "login") {
           app.innerHTML = renderLoginView();
           bindLoginEvents();
+        } else if (state.view === "expelled") {
+          app.innerHTML = renderExpelledView();
         } else if (state.view === "home") {
           app.innerHTML = renderHomeView();
           updateSyncBadge();
@@ -888,6 +1171,55 @@
           app.innerHTML = renderMasterView();
           updateSyncBadge();
         }
+
+        renderMathInContainer(app);
+      }
+
+      // -----------------------------------------------------------------------
+      // VIEW 0: EXPELLED STUDENT SCREEN
+      // -----------------------------------------------------------------------
+      function renderExpelledView() {
+        const rec = state.student ? getExpulsionRecord(state.student.name) : null;
+        return `
+          <div class="h-full flex flex-col overflow-hidden bg-slate-50">
+            <header class="flex-shrink-0 safe-top bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+              <span class="font-extrabold text-slate-900 text-sm">EduMaster Portal</span>
+              <div class="flex items-center gap-2">
+                ${renderThemeButton()}
+                <button onclick="window.portal.openMasterPinModal()"
+                  class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700">Master</button>
+              </div>
+            </header>
+            <main class="flex-1 min-h-0 overflow-y-auto scroll-body px-4 py-10 flex items-center justify-center">
+              <div class="max-w-md w-full bg-white rounded-3xl border border-rose-200 shadow-lg p-6 sm:p-8 text-center space-y-4">
+                <div class="w-14 h-14 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                  <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                </div>
+                <h1 class="text-xl font-extrabold text-slate-900">Access Revoked</h1>
+                <p class="text-sm text-slate-600">
+                  <strong>${escapeHtml(state.student ? state.student.name : "Your account")}</strong> has been expelled from the EduMaster app by the Master Administrator.
+                </p>
+                ${rec && rec.reason ? `
+                  <div class="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 font-semibold">
+                    Reason: ${escapeHtml(rec.reason)}
+                  </div>
+                ` : ""}
+                <div class="pt-2 flex flex-col gap-2">
+                  <button onclick="window.portal.manualSync()"
+                    class="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold">
+                    Check Access Status (Sync)
+                  </button>
+                  <button onclick="window.portal.forceLogout()"
+                    class="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold">
+                    Logout / Switch Student
+                  </button>
+                </div>
+              </div>
+            </main>
+          </div>
+        `;
       }
 
       // -----------------------------------------------------------------------
@@ -897,19 +1229,20 @@
         const classes = state.db.classes || [];
         return `
           <div class="h-full flex flex-col overflow-hidden bg-slate-50">
-            <!-- Fixed Header -->
             <header class="flex-shrink-0 safe-top bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
               <div class="flex items-center gap-2.5">
                 <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-extrabold text-sm shadow-sm">EM</div>
                 <span class="font-extrabold text-slate-900 text-sm sm:text-base tracking-tight">EduMaster Portal</span>
               </div>
-              <button onclick="window.portal.openMasterPinModal()"
-                class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition">
-                Master Login
-              </button>
+              <div class="flex items-center gap-1.5">
+                ${renderThemeButton()}
+                <button onclick="window.portal.openMasterPinModal()"
+                  class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition">
+                  Master Login
+                </button>
+              </div>
             </header>
 
-            <!-- Scrollable Middle Body -->
             <main class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-body px-4 py-8 pb-24 flex flex-col items-center justify-center">
               <div class="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-lg shadow-slate-200/60 p-6 sm:p-8">
                 <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4">
@@ -943,7 +1276,7 @@
                 </form>
 
                 <div class="mt-6 pt-4 border-t border-slate-100 text-center text-xs text-slate-500">
-                  MCQ Marking Scheme: <span class="font-bold text-emerald-600">+4 Correct</span> &bull; <span class="font-bold text-rose-600">-1 Wrong</span> &bull; <span class="font-bold text-slate-600">0 Skipped</span>
+                  Timed MCQ Exams &bull; Study Notes &bull; Instant Analytics
                 </div>
               </div>
             </main>
@@ -954,13 +1287,17 @@
       function bindLoginEvents() {
         const form = document.getElementById("student-login-form");
         if (!form) return;
-        form.onsubmit = (e) => {
+        form.onsubmit = async (e) => {
           e.preventDefault();
           const name = (document.getElementById("login-name").value || "").trim();
           const classId = document.getElementById("login-class").value;
           const cls = state.db.classes.find(c => c.id === classId);
           if (!name || !cls) {
             showToast("Please enter your name and select a class.", "warning");
+            return;
+          }
+          if (isStudentExpelled(name)) {
+            showToast("Access revoked: This student has been expelled by the Master.", "error");
             return;
           }
           state.student = {
@@ -970,13 +1307,15 @@
             loggedInAt: Date.now()
           };
           saveLocalSession();
+          recordStudentLoginInDb(name, cls);
+          pushAllToCloud(true);
           state.homeTab = "chapters";
           navigateToHash("#home");
         };
       }
 
       // -----------------------------------------------------------------------
-      // VIEW B: STUDENT HOME SCREEN
+      // VIEW B: STUDENT HOME SCREEN (CHAPTERS, EXAMS, MY RESULTS, DOUBTS, NOTICES)
       // -----------------------------------------------------------------------
       function renderHomeView() {
         const stu = state.student;
@@ -984,8 +1323,11 @@
         const cls = resolvedCls || { id: stu.classId, name: stu.className, mcqEnabled: false };
         const classChapters = state.db.chapters.filter(c => matchesStudentClass(c, stu, state.db.classes));
         const classExams = state.db.exams.filter(e => matchesStudentClass(e, stu, state.db.classes));
+        const myNormName = normalizeStudentName(stu.name);
+        const myResults = state.db.results.filter(r => normalizeStudentName(r.studentName) === myNormName);
+        const myDoubts = (state.db.doubts || []).filter(d => normalizeStudentName(d.studentName) === myNormName);
+        const activeNotices = (state.db.notices || []).filter(n => n.classId === "all" || matchesStudentClass(n, stu, state.db.classes));
 
-        // Subjects for filter
         const subjects = ["All", ...Array.from(new Set(classChapters.map(c => c.subject).filter(Boolean)))];
         const filteredChapters = classChapters.filter(c => {
           const matchSub = state.homeSubjectFilter === "All" || c.subject === state.homeSubjectFilter;
@@ -994,12 +1336,11 @@
           return matchSub && matchSearch;
         });
 
-        // Check for resumable exam for this class
         const savedResume = getSavedResume();
         let resumeExamObj = null;
         if (savedResume && (savedResume.classId === cls.id || classKeysMatch(savedResume.classId, cls.id)) && cls.mcqEnabled) {
           const candidateExam = classExams.find(e => e.id === savedResume.examId) || null;
-          if (candidateExam && !getExamAttemptStatus(candidateExam.id, stu.name).locked) {
+          if (candidateExam && !getExamAttemptStatus(candidateExam.id, stu.name).locked && getExamScheduleStatus(candidateExam).allowed) {
             resumeExamObj = candidateExam;
           }
         }
@@ -1025,6 +1366,7 @@
                 </div>
 
                 <div class="flex items-center gap-1.5 shrink-0">
+                  ${renderThemeButton()}
                   <button onclick="window.portal.openMasterPinModal()"
                     class="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700">
                     Master
@@ -1037,21 +1379,38 @@
               </div>
 
               <!-- Home Tabs -->
-              <div class="max-w-4xl mx-auto mt-3 grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-100">
-                <button onclick="window.portal.setHomeTab('chapters')"
-                  class="py-2 rounded-xl text-xs sm:text-sm font-bold transition ${state.homeTab === "chapters" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}">
-                  Study Chapters (${classChapters.length})
-                </button>
-                <button onclick="window.portal.setHomeTab('exams')"
-                  class="py-2 rounded-xl text-xs sm:text-sm font-bold transition ${state.homeTab === "exams" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}">
-                  ${cls.mcqEnabled ? "Timed MCQ Exams (" + classExams.length + ")" : "MCQ Exams (Locked)"}
-                </button>
+              <div class="max-w-4xl mx-auto mt-3 flex gap-1.5 overflow-x-auto pb-0.5">
+                ${[
+                  { id: "chapters", label: "Chapters (" + classChapters.length + ")" },
+                  { id: "exams", label: cls.mcqEnabled ? "MCQ Exams (" + classExams.length + ")" : "MCQ (Locked)" },
+                  { id: "myresults", label: "My Results (" + myResults.length + ")" },
+                  { id: "doubts", label: "Doubts (" + myDoubts.length + ")" }
+                ].map(t => `
+                  <button onclick="window.portal.setHomeTab('${t.id}')"
+                    class="px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition ${state.homeTab === t.id ? "bg-indigo-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:text-slate-900"}">
+                    ${t.label}
+                  </button>
+                `).join("")}
               </div>
             </header>
 
             <!-- Scrollable Middle Body -->
             <main class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-body px-4 py-4 pb-24">
               <div class="max-w-4xl mx-auto space-y-4">
+
+                <!-- Pinned Notice Board Banner -->
+                ${activeNotices.length > 0 ? `
+                  <div class="bg-indigo-50 border border-indigo-200 rounded-3xl p-4 space-y-2">
+                    <div class="flex items-center gap-2">
+                      <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-indigo-600 text-white">Notice Board</span>
+                    </div>
+                    ${activeNotices.slice(0, 3).map(n => `
+                      <div class="text-xs sm:text-sm text-indigo-950">
+                        <span class="font-extrabold">${escapeHtml(n.title)}:</span> ${escapeHtml(n.message)}
+                      </div>
+                    `).join("")}
+                  </div>
+                ` : ""}
 
                 ${resumeExamObj ? `
                   <div class="bg-amber-50 border border-amber-200 rounded-3xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
@@ -1095,7 +1454,6 @@
                     </div>
                   </div>
 
-                  <!-- Chapter Cards (NO 'HTML NOTE' tags) -->
                   ${filteredChapters.length === 0 ? `
                     <div class="bg-white rounded-3xl border border-dashed border-slate-300 p-8 text-center space-y-2.5">
                       <p class="text-sm font-bold text-slate-700">No chapters uploaded for ${escapeHtml(cls.name)} yet.</p>
@@ -1132,15 +1490,10 @@
                       }).join("")}
                     </div>
                   `}
-                ` : `
+                ` : state.homeTab === "exams" ? `
                   <!-- Timed MCQ Exams Tab -->
                   ${!cls.mcqEnabled ? `
                     <div class="bg-white rounded-3xl border border-slate-200 p-8 text-center shadow-sm">
-                      <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mx-auto mb-3">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                      </div>
                       <h3 class="text-base font-extrabold text-slate-900">Timed MCQ Exams Unavailable</h3>
                       <p class="text-xs sm:text-sm text-slate-500 mt-1.5">Timed MCQ tests are not enabled for ${escapeHtml(cls.name)}. Please use the Study Chapters tab.</p>
                     </div>
@@ -1161,42 +1514,121 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       ${classExams.map(ex => {
                         const qCount = (ex.questions || []).length;
+                        const marking = getExamMarking(ex);
                         const attemptStatus = getExamAttemptStatus(ex.id, stu.name);
+                        const sched = getExamScheduleStatus(ex);
                         const isLocked = attemptStatus.locked;
                         const isRetake = attemptStatus.retakeAllowed;
-                        const btnDisabled = qCount === 0 || isLocked;
+                        const btnDisabled = qCount === 0 || isLocked || !sched.allowed;
+                        const showLb = state.db.settings.leaderboardEnabled && (ex.showLeaderboard !== false);
+
+                        let btnLabel = "Start Timed Exam →";
+                        if (qCount === 0) btnLabel = "No Questions Yet";
+                        else if (isLocked) btnLabel = "Submitted (Master Permission Needed)";
+                        else if (!sched.allowed) btnLabel = sched.label;
+                        else if (isRetake) btnLabel = "Retake Timed Exam →";
+
                         return `
-                          <div class="bg-white rounded-3xl border ${isLocked ? "border-slate-200 bg-slate-50/70" : "border-slate-200"} p-5 shadow-sm flex flex-col justify-between gap-4">
+                          <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between gap-4">
                             <div>
                               <div class="flex flex-wrap items-center gap-1.5">
                                 <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-700">${escapeHtml(ex.subject || "General")}</span>
                                 <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-800">${Number(ex.durationMins) || 15} mins</span>
-                                <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700">${qCount} Qs (${qCount * 4} Marks)</span>
+                                <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700">${qCount} Qs (${qCount * marking.correct} Marks)</span>
+                                ${ex.scheduleEnabled ? `
+                                  <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold ${sched.allowed ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-700"}">
+                                    ${escapeHtml(sched.label)}
+                                  </span>
+                                ` : ""}
                                 ${isLocked ? `<span class="px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold bg-slate-200 text-slate-700">Submitted</span>` : ""}
                                 ${isRetake ? `<span class="px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold bg-emerald-100 text-emerald-800">Retake Permitted</span>` : ""}
                               </div>
                               <h3 class="text-base font-extrabold text-slate-900 mt-2.5 leading-snug">${escapeHtml(ex.title)}</h3>
                               <p class="text-xs text-slate-500 mt-1">
-                                ${isLocked && attemptStatus.latestResult
-                                  ? "Last Score: " + attemptStatus.latestResult.score + "/" + attemptStatus.latestResult.maxMarks + " &bull; Locked until Master allows retake"
-                                  : "+4 Correct &bull; -1 Wrong &bull; 0 Skipped"}
+                                +${marking.correct} Correct &bull; ${marking.wrong > 0 ? "-" + marking.wrong + " Wrong" : "No Negative Marking"} &bull; 0 Skipped
                               </p>
                             </div>
-                            <button onclick="window.portal.startExam('${escapeHtml(ex.id)}')" ${btnDisabled ? "disabled" : ""}
-                              class="w-full py-2.5 rounded-xl text-sm font-bold transition ${btnDisabled ? "bg-slate-200 text-slate-500 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"}">
-                              ${qCount === 0
-                                ? "No Questions Yet"
-                                : isLocked
-                                  ? "Submitted (Master Permission Needed)"
-                                  : isRetake
-                                    ? "Retake Timed Exam &rarr;"
-                                    : "Start Timed Exam &rarr;"}
-                            </button>
+                            <div class="space-y-2">
+                              <button onclick="window.portal.startExam('${escapeHtml(ex.id)}')" ${btnDisabled ? "disabled" : ""}
+                                class="w-full py-2.5 rounded-xl text-sm font-bold transition ${btnDisabled ? "bg-slate-200 text-slate-500 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"}">
+                                ${escapeHtml(btnLabel)}
+                              </button>
+                              ${showLb ? `
+                                <button onclick="window.portal.openLeaderboardModal('${escapeHtml(ex.id)}')"
+                                  class="w-full py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700">
+                                  🏆 View Class Leaderboard
+                                </button>
+                              ` : ""}
+                            </div>
                           </div>
                         `;
                       }).join("")}
                     </div>
                   `}
+                ` : state.homeTab === "myresults" ? `
+                  <!-- Student My Results History Tab -->
+                  ${myResults.length === 0 ? `
+                    <div class="bg-white rounded-3xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">
+                      You have not submitted any exams yet. Your past scores and detailed reviews will appear here.
+                    </div>
+                  ` : `
+                    <div class="space-y-3">
+                      ${myResults.map(r => `
+                        <div class="bg-white rounded-3xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <h3 class="text-sm sm:text-base font-extrabold text-slate-900">${escapeHtml(r.examTitle)}</h3>
+                            <p class="text-xs text-slate-500 mt-0.5">${formatDateTime(r.submittedAt)} &bull; Accuracy: <strong>${r.accuracy || 0}%</strong></p>
+                          </div>
+                          <div class="flex items-center justify-between sm:justify-end gap-3">
+                            <div class="text-left sm:text-right">
+                              <div class="text-lg font-extrabold font-mono-code text-indigo-600">${r.score}/${r.maxMarks}</div>
+                              <div class="text-[11px] font-bold text-slate-500"><span class="text-emerald-600">+${r.correct}</span> / <span class="text-rose-600">-${r.wrong}</span> / ${r.unattempted} skip</div>
+                            </div>
+                            <button onclick="window.portal.openDetailedResultModal('${escapeHtml(r.id)}')"
+                              class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shrink-0">
+                              Review
+                            </button>
+                          </div>
+                        </div>
+                      `).join("")}
+                    </div>
+                  `}
+                ` : `
+                  <!-- Student Ask a Doubt Tab -->
+                  <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm space-y-3">
+                    <h3 class="text-sm font-extrabold text-slate-900">Ask Your Teacher a Doubt</h3>
+                    <input id="student-doubt-topic" type="text" placeholder="Chapter or Exam Topic (e.g., Electrostatics)"
+                      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold" />
+                    <textarea id="student-doubt-text" rows="3" placeholder="Write your question clearly..."
+                      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm"></textarea>
+                    <button onclick="window.portal.submitDoubtFromHome()"
+                      class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold">
+                      Send Doubt to Teacher
+                    </button>
+                  </div>
+
+                  <div class="space-y-3">
+                    ${myDoubts.length === 0 ? `
+                      <div class="bg-white rounded-3xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500">
+                        No doubts asked yet.
+                      </div>
+                    ` : myDoubts.map(d => `
+                      <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-2">
+                        <div class="flex items-center justify-between text-[11px] text-slate-500">
+                          <span class="font-bold text-indigo-600">${escapeHtml(d.contextTitle || "General")}</span>
+                          <span>${formatDateTime(d.createdAt)}</span>
+                        </div>
+                        <p class="text-sm font-bold text-slate-900">${escapeHtml(d.question)}</p>
+                        ${d.reply ? `
+                          <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950">
+                            <span class="font-extrabold">Teacher Reply:</span> ${escapeHtml(d.reply)}
+                          </div>
+                        ` : `
+                          <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800">Waiting for Teacher Reply</span>
+                        `}
+                      </div>
+                    `).join("")}
+                  </div>
                 `}
 
               </div>
@@ -1206,7 +1638,7 @@
       }
 
       // -----------------------------------------------------------------------
-      // VIEW C: NOTES / CHAPTER READER (CLEAN, NO 'HTML Study Document' TAGS)
+      // VIEW C: NOTES / CHAPTER READER
       // -----------------------------------------------------------------------
       function renderNoteReaderView() {
         const ch = state.db.chapters.find(c => c.id === state.activeChapterId);
@@ -1219,7 +1651,6 @@
 
         return `
           <div class="h-full flex flex-col overflow-hidden bg-slate-50">
-            <!-- Fixed Top Header -->
             <header class="flex-shrink-0 safe-top bg-white border-b border-slate-200 px-4 pb-3 flex items-center justify-between gap-2 shadow-sm">
               <button onclick="window.portal.goHome()"
                 class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold shrink-0">
@@ -1235,7 +1666,6 @@
               </button>
             </header>
 
-            <!-- Scrollable Middle Body -->
             <main class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-body px-4 py-4 pb-24">
               <div class="max-w-3xl mx-auto space-y-4">
                 ${isHtmlNote ? `
@@ -1270,6 +1700,12 @@
                     Open Reference / Video Link &rarr;
                   </a>
                 ` : ""}
+
+                <!-- Quick Ask a Doubt button -->
+                <button onclick="window.portal.openAskDoubtModal('${escapeHtml(ch.title)}')"
+                  class="w-full py-3 rounded-2xl bg-white border border-slate-200 hover:border-indigo-300 text-indigo-600 text-xs sm:text-sm font-bold shadow-sm">
+                  ❓ Have a doubt in this chapter? Ask Teacher
+                </button>
               </div>
             </main>
           </div>
@@ -1277,7 +1713,7 @@
       }
 
       // -----------------------------------------------------------------------
-      // VIEW D: TIMED MCQ EXAM RUNNER (FIXED BOTTOM BAR FOR PREV / PALETTE / NEXT)
+      // VIEW D: TIMED MCQ EXAM RUNNER
       // -----------------------------------------------------------------------
       function renderExamRunnerView() {
         const session = state.activeExam;
@@ -1288,14 +1724,16 @@
         const questions = exam.questions || [];
         const total = questions.length;
         const idx = Math.min(session.currentIndex, Math.max(0, total - 1));
-        const q = questions[idx];
-        const selected = session.answers[idx];
+        const orderEntry = (session.questionOrder && session.questionOrder[idx]) || { qIdx: idx, optOrder: [0, 1, 2, 3] };
+        const q = questions[orderEntry.qIdx];
+        const selectedOrigOpt = session.answers[idx];
         const isFlagged = !!session.flagged[idx];
         const answeredCount = Object.keys(session.answers).length;
+        const marking = getExamMarking(exam);
+        const switchLimit = exam.tabSwitchLimit !== undefined ? Number(exam.tabSwitchLimit) : 3;
 
         return `
           <div class="h-full flex flex-col overflow-hidden bg-slate-50">
-            <!-- Fixed Top Header -->
             <header class="flex-shrink-0 safe-top bg-white border-b border-slate-200 px-3 sm:px-4 pb-2.5 shadow-sm">
               <div class="max-w-4xl mx-auto flex items-center justify-between gap-2">
                 <button onclick="window.portal.pauseAndGoHome()"
@@ -1318,11 +1756,13 @@
 
               <div class="max-w-4xl mx-auto mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold">
                 <span class="text-slate-600 truncate">${escapeHtml(state.student.name)} (${escapeHtml(state.student.className)})</span>
-                <span class="shrink-0"><span class="text-emerald-600">+4</span> / <span class="text-rose-600">-1</span></span>
+                <div class="flex items-center gap-2 shrink-0">
+                  ${switchLimit > 0 && session.tabSwitches > 0 ? `<span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">Warnings: ${session.tabSwitches}/${switchLimit}</span>` : ""}
+                  <span><span class="text-emerald-600">+${marking.correct}</span> / <span class="text-rose-600">-${marking.wrong}</span></span>
+                </div>
               </div>
             </header>
 
-            <!-- Scrollable Middle Body (Long questions scroll freely above the fixed bottom bar) -->
             <main class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-body px-4 py-4 pb-10">
               <div class="max-w-3xl mx-auto space-y-4">
                 ${exam.htmlPaper && exam.htmlPaper.trim() ? `
@@ -1346,19 +1786,20 @@
                     <h2 class="text-base sm:text-lg font-bold text-slate-900 leading-relaxed whitespace-pre-line">${escapeHtml(q.text)}</h2>
 
                     <div class="space-y-2.5">
-                      ${(q.options || ["", "", "", ""]).slice(0, 4).map((opt, oIdx) => {
-                        const isSel = selected === oIdx;
+                      ${orderEntry.optOrder.map((origOptIdx, displayPos) => {
+                        const opt = (q.options || ["", "", "", ""])[origOptIdx] || "";
+                        const isSel = selectedOrigOpt === origOptIdx;
                         return `
-                          <button onclick="window.portal.selectOption(${idx}, ${oIdx})"
+                          <button onclick="window.portal.selectOption(${idx}, ${origOptIdx})"
                             class="w-full text-left p-3.5 sm:p-4 rounded-2xl border-2 transition flex items-start gap-3 ${isSel ? "border-indigo-600 bg-indigo-50/70" : "border-slate-200 bg-white hover:border-slate-300"}">
-                            <span class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-extrabold shrink-0 ${isSel ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-700"}">${LETTERS[oIdx]}</span>
-                            <span class="text-sm sm:text-base font-medium text-slate-800 leading-snug pt-0.5">${escapeHtml(opt || "Option " + LETTERS[oIdx])}</span>
+                            <span class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-extrabold shrink-0 ${isSel ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-700"}">${LETTERS[displayPos]}</span>
+                            <span class="text-sm sm:text-base font-medium text-slate-800 leading-snug pt-0.5">${escapeHtml(opt || "Option " + LETTERS[displayPos])}</span>
                           </button>
                         `;
                       }).join("")}
                     </div>
 
-                    ${selected !== undefined ? `
+                    ${selectedOrigOpt !== undefined ? `
                       <div class="pt-1 flex justify-end">
                         <button onclick="window.portal.clearOption(${idx})" class="text-xs font-bold text-slate-500 hover:text-rose-600">
                           Clear Response
@@ -1370,7 +1811,6 @@
               </div>
             </main>
 
-            <!-- Fixed Bottom Navigation Bar (ALWAYS visible above Android nav bar) -->
             <footer class="flex-shrink-0 safe-bottom bg-white border-t border-slate-200 px-3 sm:px-4 pt-3 shadow-[0_-4px_16px_rgba(15,23,42,0.06)]">
               <div class="max-w-3xl mx-auto grid grid-cols-3 gap-2 items-center">
                 <button onclick="window.portal.goToQuestion(${idx - 1})" ${idx === 0 ? "disabled" : ""}
@@ -1397,7 +1837,6 @@
               </div>
             </footer>
 
-            <!-- Slide-Up Question Palette Drawer -->
             ${state.paletteOpen ? `
               <div class="fixed inset-0 z-[70] bg-slate-900/50 backdrop-blur-xs flex flex-col justify-end" onclick="window.portal.togglePalette()">
                 <div class="bg-white rounded-t-3xl p-5 safe-bottom max-h-[75vh] flex flex-col" onclick="event.stopPropagation()">
@@ -1434,17 +1873,57 @@
       }
 
       // -----------------------------------------------------------------------
-      // VIEW E: POST-EXAM RESULTS & QUESTION-BY-QUESTION REVIEW
+      // VIEW E: POST-EXAM RESULTS & REVIEW
       // -----------------------------------------------------------------------
+      function renderResultsBreakdownHtml(res) {
+        const mc = res.markingCorrect !== undefined ? res.markingCorrect : 4;
+        const mw = res.markingWrong !== undefined ? res.markingWrong : 1;
+        const breakdown = Array.isArray(res.breakdown) ? res.breakdown : [];
+        if (breakdown.length === 0) {
+          return `<div class="p-4 rounded-2xl bg-slate-100 text-xs text-slate-500 text-center">Question-by-question breakdown was not recorded for this older submission.</div>`;
+        }
+        return breakdown.map(item => {
+          const badge = item.status === "correct"
+            ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-100 text-emerald-800">+${mc} Correct</span>`
+            : item.status === "wrong"
+            ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-100 text-rose-800">-${mw} Wrong</span>`
+            : `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-600">0 Skipped</span>`;
+          return `
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-extrabold text-indigo-600">Q${item.index + 1}</span>
+                ${badge}
+              </div>
+              <p class="text-sm font-bold text-slate-900 leading-snug">${escapeHtml(item.text)}</p>
+              <div class="text-xs space-y-1">
+                <p class="text-emerald-700 font-bold">Correct Answer: ${LETTERS[item.correctIndex]}. ${escapeHtml((item.options || [])[item.correctIndex] || "")}</p>
+                ${item.selectedIndex !== null && item.selectedIndex !== undefined && item.selectedIndex !== item.correctIndex ? `
+                  <p class="text-rose-600 font-bold">Selected Answer: ${LETTERS[item.selectedIndex]}. ${escapeHtml((item.options || [])[item.selectedIndex] || "")}</p>
+                ` : item.selectedIndex === null || item.selectedIndex === undefined ? `
+                  <p class="text-slate-500 font-semibold">Not Attempted</p>
+                ` : ""}
+              </div>
+              ${item.explanation ? `
+                <div class="p-3 rounded-xl bg-indigo-50/70 text-xs text-indigo-950 leading-relaxed">
+                  <strong>Explanation:</strong> ${escapeHtml(item.explanation)}
+                </div>
+              ` : ""}
+            </div>
+          `;
+        }).join("");
+      }
+
       function renderResultsView() {
         const res = state.lastResult;
         if (!res) {
           navigateToHash("#home");
           return "";
         }
+        const mc = res.markingCorrect !== undefined ? res.markingCorrect : 4;
+        const mw = res.markingWrong !== undefined ? res.markingWrong : 1;
+
         return `
           <div class="h-full flex flex-col overflow-hidden bg-slate-50">
-            <!-- Fixed Top Header -->
             <header class="flex-shrink-0 safe-top bg-white border-b border-slate-200 px-4 pb-3 flex items-center justify-between gap-2 shadow-sm">
               <h1 class="text-sm sm:text-base font-extrabold text-slate-900 truncate">Exam Result</h1>
               <button onclick="window.portal.goHome()"
@@ -1453,10 +1932,8 @@
               </button>
             </header>
 
-            <!-- Scrollable Middle Body -->
             <main class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-body px-4 py-5 pb-24">
               <div class="max-w-3xl mx-auto space-y-5">
-                <!-- Score Summary Card -->
                 <div class="bg-slate-900 text-white rounded-3xl p-6 shadow-lg">
                   <p class="text-xs font-bold text-indigo-300 uppercase tracking-wider">${escapeHtml(res.studentName)} &bull; ${escapeHtml(res.className)}</p>
                   <h2 class="text-lg sm:text-xl font-extrabold mt-1">${escapeHtml(res.examTitle)}</h2>
@@ -1468,11 +1945,11 @@
                     </div>
                     <div class="bg-emerald-500/20 rounded-2xl p-3.5 text-center">
                       <div class="text-2xl font-extrabold font-mono-code text-emerald-300">${res.correct}</div>
-                      <div class="text-[11px] font-semibold text-emerald-200 mt-0.5">Correct (+4)</div>
+                      <div class="text-[11px] font-semibold text-emerald-200 mt-0.5">Correct (+${mc})</div>
                     </div>
                     <div class="bg-rose-500/20 rounded-2xl p-3.5 text-center">
                       <div class="text-2xl font-extrabold font-mono-code text-rose-300">${res.wrong}</div>
-                      <div class="text-[11px] font-semibold text-rose-200 mt-0.5">Wrong (-1)</div>
+                      <div class="text-[11px] font-semibold text-rose-200 mt-0.5">Wrong (-${mw})</div>
                     </div>
                     <div class="bg-white/10 rounded-2xl p-3.5 text-center">
                       <div class="text-2xl font-extrabold font-mono-code">${res.accuracy}%</div>
@@ -1481,36 +1958,22 @@
                   </div>
                 </div>
 
-                <!-- Question-by-Question Review -->
+                <div class="flex flex-wrap gap-2">
+                  <button onclick="window.portal.openAskDoubtModal('${escapeHtml(res.examTitle)}')"
+                    class="flex-1 py-2.5 px-4 rounded-xl bg-white border border-slate-200 text-indigo-600 text-xs font-bold shadow-sm">
+                    ❓ Ask a Doubt on This Exam
+                  </button>
+                  ${state.db.settings.leaderboardEnabled ? `
+                    <button onclick="window.portal.openLeaderboardModal('${escapeHtml(res.examId)}')"
+                      class="flex-1 py-2.5 px-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold shadow-sm">
+                      🏆 View Leaderboard
+                    </button>
+                  ` : ""}
+                </div>
+
                 <div class="space-y-3">
-                  <h3 class="text-sm font-extrabold text-slate-900">Detailed Review (${res.breakdown.length} Questions)</h3>
-                  ${res.breakdown.map(item => {
-                    const badge = item.status === "correct"
-                      ? '<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-100 text-emerald-800">+4 Correct</span>'
-                      : item.status === "wrong"
-                      ? '<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-100 text-rose-800">-1 Wrong</span>'
-                      : '<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-600">0 Skipped</span>';
-                    return `
-                      <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-2.5">
-                        <div class="flex items-center justify-between gap-2">
-                          <span class="text-xs font-extrabold text-indigo-600">Q${item.index + 1}</span>
-                          ${badge}
-                        </div>
-                        <p class="text-sm font-bold text-slate-900 leading-snug">${escapeHtml(item.text)}</p>
-                        <div class="text-xs space-y-1">
-                          <p class="text-emerald-700 font-bold">Correct Answer: ${LETTERS[item.correctIndex]}. ${escapeHtml(item.options[item.correctIndex] || "")}</p>
-                          ${item.selectedIndex !== null && item.selectedIndex !== item.correctIndex ? `
-                            <p class="text-rose-600 font-bold">Your Answer: ${LETTERS[item.selectedIndex]}. ${escapeHtml(item.options[item.selectedIndex] || "")}</p>
-                          ` : ""}
-                        </div>
-                        ${item.explanation ? `
-                          <div class="p-3 rounded-xl bg-indigo-50/70 text-xs text-indigo-950 leading-relaxed">
-                            <strong>Explanation:</strong> ${escapeHtml(item.explanation)}
-                          </div>
-                        ` : ""}
-                      </div>
-                    `;
-                  }).join("")}
+                  <h3 class="text-sm font-extrabold text-slate-900">Detailed Review (${(res.breakdown || []).length} Questions)</h3>
+                  ${renderResultsBreakdownHtml(res)}
                 </div>
               </div>
             </main>
@@ -1523,9 +1986,9 @@
       // -----------------------------------------------------------------------
       function renderMasterView() {
         const classes = state.db.classes || [];
+        const pendingDoubts = (state.db.doubts || []).filter(d => !d.reply).length;
         return `
           <div class="h-full flex flex-col overflow-hidden bg-slate-50">
-            <!-- Fixed Top Header -->
             <header class="flex-shrink-0 safe-top bg-slate-900 text-white px-4 pb-3 shadow-md">
               <div class="max-w-5xl mx-auto flex items-center justify-between gap-2">
                 <div>
@@ -1535,19 +1998,25 @@
                     <button onclick="window.portal.manualSync()" class="text-[11px] font-bold text-indigo-300 hover:underline">Sync Cloud</button>
                   </div>
                 </div>
-                <button onclick="window.portal.exitMaster()"
-                  class="px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold shrink-0">
-                  Exit Master &rarr;
-                </button>
+                <div class="flex items-center gap-2">
+                  <button onclick="window.portal.toggleDarkMode()" class="px-2.5 py-2 rounded-xl bg-white/10 text-xs font-bold">${state.darkMode ? "☀️" : "🌙"}</button>
+                  <button onclick="window.portal.exitMaster()"
+                    class="px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold shrink-0">
+                    Exit Master &rarr;
+                  </button>
+                </div>
               </div>
 
-              <!-- Master Navigation Tabs -->
+              <!-- Master Navigation Tabs (Separate Sections for Exam Results, First Login / Expulsion, etc.) -->
               <div class="max-w-5xl mx-auto mt-3 flex gap-1.5 overflow-x-auto pb-0.5">
                 ${[
                   { id: "classes", label: "Classes (" + classes.length + ")" },
                   { id: "chapters", label: "Chapters (" + state.db.chapters.length + ")" },
                   { id: "exams", label: "MCQ Exams (" + state.db.exams.length + ")" },
-                  { id: "results", label: "Results (" + state.db.results.length + ")" }
+                  { id: "results", label: "Exam Results (" + state.db.results.length + ")" },
+                  { id: "students", label: "Student Logins & Expel (" + state.db.students.length + ")" },
+                  { id: "notices", label: "Notices & Doubts" + (pendingDoubts ? " (" + pendingDoubts + ")" : "") },
+                  { id: "settings", label: "Settings" }
                 ].map(t => `
                   <button onclick="window.portal.setMasterTab('${t.id}')"
                     class="px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition ${state.masterTab === t.id ? "bg-indigo-600 text-white" : "bg-white/10 text-slate-300 hover:bg-white/20"}">
@@ -1557,13 +2026,15 @@
               </div>
             </header>
 
-            <!-- Scrollable Middle Body -->
             <main class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scroll-body px-4 py-5 pb-24">
               <div class="max-w-5xl mx-auto space-y-4">
                 ${state.masterTab === "classes" ? renderMasterClassesTab() : ""}
                 ${state.masterTab === "chapters" ? renderMasterChaptersTab() : ""}
                 ${state.masterTab === "exams" ? renderMasterExamsTab() : ""}
                 ${state.masterTab === "results" ? renderMasterResultsTab() : ""}
+                ${state.masterTab === "students" ? renderMasterStudentsTab() : ""}
+                ${state.masterTab === "notices" ? renderMasterNoticesDoubtsTab() : ""}
+                ${state.masterTab === "settings" ? renderMasterSettingsTab() : ""}
               </div>
             </main>
           </div>
@@ -1684,24 +2155,54 @@
             ` : filtered.map(ex => {
               const cls = state.db.classes.find(c => c.id === ex.classId);
               const qCount = (ex.questions || []).length;
+              const marking = getExamMarking(ex);
+              const schedOn = !!ex.scheduleEnabled;
               return `
                 <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
-                  <div>
-                    <div class="flex flex-wrap items-center gap-1.5">
-                      <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-900 text-white">${escapeHtml(cls ? cls.name : ex.classId)}</span>
-                      <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700">${escapeHtml(ex.subject || "General")}</span>
-                      <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800">${Number(ex.durationMins) || 15} mins</span>
-                      <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700">${qCount} Qs (${qCount * 4} Marks)</span>
+                  <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div>
+                      <div class="flex flex-wrap items-center gap-1.5">
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-900 text-white">${escapeHtml(cls ? cls.name : ex.classId)}</span>
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700">${escapeHtml(ex.subject || "General")}</span>
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800">${Number(ex.durationMins) || 15} mins</span>
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700">${qCount} Qs (+${marking.correct}/-${marking.wrong})</span>
+                        ${ex.shuffleEnabled ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-50 text-violet-700">Shuffled</span>` : ""}
+                      </div>
+                      <h3 class="text-sm sm:text-base font-extrabold text-slate-900 mt-1.5">${escapeHtml(ex.title)}</h3>
                     </div>
-                    <h3 class="text-sm sm:text-base font-extrabold text-slate-900 mt-1.5">${escapeHtml(ex.title)}</h3>
+
+                    <!-- Schedule Exam ON / OFF Switch -->
+                    <div class="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 border border-slate-200 shrink-0">
+                      <div class="text-right">
+                        <div class="text-[11px] font-extrabold text-slate-800">Schedule Exam</div>
+                        <div class="text-[10px] font-bold ${schedOn ? "text-indigo-600" : "text-slate-500"}">
+                          ${schedOn ? "ON (Scheduled Window)" : "OFF (Anytime)"}
+                        </div>
+                      </div>
+                      <button type="button" onclick="window.portal.toggleExamSchedule('${escapeHtml(ex.id)}')"
+                        class="toggle-track ${schedOn ? "on bg-indigo-600" : "bg-slate-300"}" aria-label="Toggle Schedule Exam">
+                        <span class="toggle-thumb"></span>
+                      </button>
+                    </div>
                   </div>
+
+                  ${schedOn ? `
+                    <div class="text-[11px] font-semibold text-indigo-700 bg-indigo-50/70 px-3 py-2 rounded-xl">
+                      Scheduled Window: <strong>${formatDateTime(ex.startTime)}</strong> &rarr; <strong>${formatDateTime(ex.endTime)}</strong>
+                    </div>
+                  ` : ""}
+
                   <div class="flex flex-wrap items-center gap-2">
                     <button onclick="window.portal.openQuestionsModal('${escapeHtml(ex.id)}')"
                       class="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white">
                       Questions / HTML Upload (${qCount})
                     </button>
                     <button onclick="window.portal.openExamModal('${escapeHtml(ex.id)}')"
-                      class="px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-700">Edit Info</button>
+                      class="px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-700">Edit Info &amp; Schedule</button>
+                    <button onclick="window.portal.openQuestionAnalyticsModal('${escapeHtml(ex.id)}')"
+                      class="px-3 py-2 rounded-xl text-xs font-bold bg-amber-50 text-amber-800">Analytics</button>
+                    <button onclick="window.portal.openMissedExamModal('${escapeHtml(ex.id)}')"
+                      class="px-3 py-2 rounded-xl text-xs font-bold bg-violet-50 text-violet-700">Who Missed</button>
                     <button onclick="window.portal.deleteExam('${escapeHtml(ex.id)}')"
                       class="px-3 py-2 rounded-xl text-xs font-bold bg-rose-50 text-rose-600">Delete</button>
                   </div>
@@ -1712,6 +2213,7 @@
         `;
       }
 
+      // Dedicated Master Section: Exam Results (with Detailed Result Viewer, Analytics, Retake Control)
       function renderMasterResultsTab() {
         const results = state.db.results.filter(r => {
           const matchCls = state.masterResultClassFilter === "all" || r.classId === state.masterResultClassFilter;
@@ -1750,15 +2252,25 @@
               return `
                 <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <h3 class="text-sm font-extrabold text-slate-900">${escapeHtml(r.studentName)} <span class="text-xs font-bold text-indigo-600">(${escapeHtml(r.className || r.classId)})</span></h3>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <h3 class="text-sm font-extrabold text-slate-900">${escapeHtml(r.studentName)}</h3>
+                      <span class="text-xs font-bold text-indigo-600">(${escapeHtml(r.className || r.classId)})</span>
+                      ${r.tabSwitches > 0 ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-100 text-rose-700">${r.tabSwitches} Tab Switches</span>` : ""}
+                    </div>
                     <p class="text-xs text-slate-600">${escapeHtml(r.examTitle)}</p>
-                    <p class="text-[11px] text-slate-400 mt-0.5">${r.submittedAt ? new Date(r.submittedAt).toLocaleString() : ""}</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">${formatDateTime(r.submittedAt)}</p>
                   </div>
-                  <div class="flex flex-wrap items-center justify-between sm:justify-end gap-3">
-                    <div class="text-left sm:text-right">
+                  <div class="flex flex-wrap items-center justify-between sm:justify-end gap-2.5">
+                    <div class="text-left sm:text-right mr-1">
                       <div class="text-base font-extrabold font-mono-code text-slate-900">${r.score}/${r.maxMarks}</div>
                       <div class="text-[11px] font-bold text-slate-500"><span class="text-emerald-600">+${r.correct}</span> / <span class="text-rose-600">-${r.wrong}</span> / ${r.unattempted} skip</div>
                     </div>
+
+                    <button onclick="window.portal.openDetailedResultModal('${escapeHtml(r.id)}')"
+                      class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white">
+                      Detailed Result
+                    </button>
+
                     ${isLatestForPair ? (
                       attemptStatus.retakeAllowed ? `
                         <div class="flex items-center gap-1.5">
@@ -1783,8 +2295,200 @@
         `;
       }
 
+      // Dedicated Master Section: Student First Logins & Expulsion Management
+      function renderMasterStudentsTab() {
+        const students = state.db.students || [];
+        const q = (state.masterStudentSearch || "").trim().toLowerCase();
+        const filtered = students.filter(s => {
+          const matchCls = state.masterStudentClassFilter === "all" || s.classId === state.masterStudentClassFilter;
+          const matchSearch = !q || (s.name || "").toLowerCase().includes(q) || (s.className || "").toLowerCase().includes(q);
+          const exp = isStudentExpelled(s.name);
+          const matchStatus = state.masterStudentStatusFilter === "all"
+            || (state.masterStudentStatusFilter === "expelled" && exp)
+            || (state.masterStudentStatusFilter === "active" && !exp);
+          return matchCls && matchSearch && matchStatus;
+        });
+
+        const expelledCount = Object.keys(state.db.expelledStudents || {}).length;
+
+        return `
+          <div class="bg-white rounded-3xl border border-slate-200 p-4 space-y-3 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 class="text-sm font-extrabold text-slate-900">Student First Logins &amp; Expulsion Control</h2>
+                <p class="text-xs text-slate-500">Total Registered: <strong>${students.length}</strong> &bull; Expelled: <strong class="text-rose-600">${expelledCount}</strong></p>
+              </div>
+              <button onclick="window.portal.openManualExpelModal()"
+                class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold">
+                + Expel Student by Name
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input type="text" value="${escapeHtml(state.masterStudentSearch)}" oninput="window.portal.setMasterStudentSearch(this.value)"
+                placeholder="Search student name..."
+                class="px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold" />
+              <select onchange="window.portal.setMasterStudentClass(this.value)"
+                class="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white">
+                <option value="all">All Classes</option>
+                ${state.db.classes.map(c => `<option value="${escapeHtml(c.id)}" ${state.masterStudentClassFilter === c.id ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
+              </select>
+              <select onchange="window.portal.setMasterStudentStatus(this.value)"
+                class="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white">
+                <option value="all" ${state.masterStudentStatusFilter === "all" ? "selected" : ""}>All Students</option>
+                <option value="active" ${state.masterStudentStatusFilter === "active" ? "selected" : ""}>Active Only</option>
+                <option value="expelled" ${state.masterStudentStatusFilter === "expelled" ? "selected" : ""}>Expelled Only</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="space-y-2.5">
+            ${filtered.length === 0 ? `
+              <div class="bg-white rounded-3xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">
+                No student login records match your filter yet.
+              </div>
+            ` : filtered.map(s => {
+              const expRec = getExpulsionRecord(s.name);
+              return `
+                <div class="bg-white rounded-2xl border ${expRec ? "border-rose-300 bg-rose-50/30" : "border-slate-200"} p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div class="space-y-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <h3 class="text-sm font-extrabold text-slate-900">${escapeHtml(s.name)}</h3>
+                      <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700">${escapeHtml(s.className || s.classId)}</span>
+                      ${expRec ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-600 text-white">EXPELLED</span>` : `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700">Active</span>`}
+                    </div>
+                    <div class="text-xs text-slate-600">
+                      <span class="font-bold text-slate-800">First Login:</span> ${formatDateTime(s.firstLoginAt)}
+                    </div>
+                    <div class="text-[11px] text-slate-500">
+                      Last Login: ${formatDateTime(s.lastLoginAt)} &bull; Total Logins: <strong>${s.loginCount || 1}</strong>
+                    </div>
+                    ${expRec && expRec.reason ? `<div class="text-[11px] font-semibold text-rose-700">Expulsion Reason: ${escapeHtml(expRec.reason)}</div>` : ""}
+                  </div>
+
+                  <div class="flex items-center gap-2 shrink-0">
+                    ${expRec ? `
+                      <button onclick="window.portal.reinstateStudent('${escapeHtml(s.normName)}')"
+                        class="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white">
+                        Reinstate Student
+                      </button>
+                    ` : `
+                      <button onclick="window.portal.openExpelConfirmModal('${escapeHtml(s.name)}', '${escapeHtml(s.className || "")}')"
+                        class="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white">
+                        Expel from App
+                      </button>
+                    `}
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        `;
+      }
+
+      // Dedicated Master Section: Notices & Student Doubts
+      function renderMasterNoticesDoubtsTab() {
+        const notices = state.db.notices || [];
+        const doubts = state.db.doubts || [];
+        return `
+          <!-- Post New Notice -->
+          <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm space-y-3">
+            <h2 class="text-sm font-extrabold text-slate-900">Notice Board / Announcements</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <input id="notice-title" type="text" placeholder="Notice Title (e.g., Physics Test Tomorrow)"
+                class="sm:col-span-2 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold" />
+              <select id="notice-class" class="px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-bold bg-white">
+                <option value="all">All Classes</option>
+                ${state.db.classes.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join("")}
+              </select>
+            </div>
+            <textarea id="notice-msg" rows="2" placeholder="Write announcement details..."
+              class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm"></textarea>
+            <button onclick="window.portal.addNotice()"
+              class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold">
+              + Post Notice
+            </button>
+
+            ${notices.length > 0 ? `
+              <div class="pt-3 border-t border-slate-100 space-y-2">
+                ${notices.map(n => {
+                  const cls = state.db.classes.find(c => c.id === n.classId);
+                  return `
+                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-2">
+                      <div>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800">${n.classId === "all" ? "All Classes" : escapeHtml(cls ? cls.name : n.classId)}</span>
+                        <p class="text-xs font-extrabold text-slate-900 mt-1">${escapeHtml(n.title)}</p>
+                        <p class="text-xs text-slate-600">${escapeHtml(n.message)}</p>
+                      </div>
+                      <button onclick="window.portal.deleteNotice('${escapeHtml(n.id)}')" class="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-600 text-[11px] font-bold shrink-0">Delete</button>
+                    </div>
+                  `;
+                }).join("")}
+              </div>
+            ` : ""}
+          </div>
+
+          <!-- Student Doubts -->
+          <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm space-y-3">
+            <h2 class="text-sm font-extrabold text-slate-900">Student Doubts (${doubts.length})</h2>
+            ${doubts.length === 0 ? `
+              <p class="text-xs text-slate-500">No student doubts submitted yet.</p>
+            ` : doubts.map(d => `
+              <div class="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-2">
+                <div class="flex flex-wrap items-center justify-between gap-1 text-[11px]">
+                  <span class="font-extrabold text-slate-900">${escapeHtml(d.studentName)} <span class="text-indigo-600">(${escapeHtml(d.className || d.classId)})</span></span>
+                  <span class="text-slate-400">${formatDateTime(d.createdAt)}</span>
+                </div>
+                <p class="text-[11px] font-bold text-indigo-700">Topic: ${escapeHtml(d.contextTitle || "General")}</p>
+                <p class="text-sm font-semibold text-slate-800">${escapeHtml(d.question)}</p>
+                <div class="flex flex-col sm:flex-row gap-2 pt-1">
+                  <input id="reply-input-${escapeHtml(d.id)}" type="text" value="${escapeHtml(d.reply || "")}" placeholder="Type your reply to student..."
+                    class="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white" />
+                  <button onclick="window.portal.replyToDoubt('${escapeHtml(d.id)}')"
+                    class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shrink-0">
+                    ${d.reply ? "Update Reply" : "Send Reply"}
+                  </button>
+                  <button onclick="window.portal.deleteDoubt('${escapeHtml(d.id)}')"
+                    class="px-3 py-2 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold shrink-0">Del</button>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      }
+
+      // Dedicated Master Section: Settings (Change Master PIN + Global Leaderboard Toggle)
+      function renderMasterSettingsTab() {
+        const lbOn = !!(state.db.settings && state.db.settings.leaderboardEnabled);
+        return `
+          <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <h2 class="text-sm font-extrabold text-slate-900">Change Master PIN</h2>
+            <p class="text-xs text-slate-500">Update your Master Control Panel PIN directly in the cloud database without editing code.</p>
+            <div class="flex flex-col sm:flex-row gap-2.5">
+              <input id="settings-new-pin" type="password" inputmode="numeric" placeholder="Enter new PIN (min 4 digits)"
+                class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono-code font-bold" />
+              <button onclick="window.portal.updateMasterPin()"
+                class="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shrink-0">
+                Save New PIN
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm flex items-center justify-between gap-4">
+            <div>
+              <h2 class="text-sm font-extrabold text-slate-900">Class Leaderboard</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Show Top 10 rank list to students after exams.</p>
+            </div>
+            <button type="button" onclick="window.portal.toggleGlobalLeaderboard()"
+              class="toggle-track ${lbOn ? "on bg-indigo-600" : "bg-slate-300"}">
+              <span class="toggle-thumb"></span>
+            </button>
+          </div>
+        `;
+      }
+
       // =======================================================================
-      // 10. MASTER MODALS (PIN, CHAPTER/HTML NOTE, EXAM, QUESTIONS/HTML PAPER)
+      // 10. MODALS (PIN, DETAILED RESULT, LEADERBOARD, ANALYTICS, WHO MISSED, EXPEL, CHAPTER, EXAM, QUESTIONS)
       // =======================================================================
       function openMasterPinModal() {
         const root = document.getElementById("modal-root");
@@ -1809,13 +2513,305 @@
         document.getElementById("pin-form").onsubmit = (e) => {
           e.preventDefault();
           const val = (document.getElementById("master-pin-input").value || "").trim();
-          if (val === MASTER_PIN) {
+          if (val === getActiveMasterPin()) {
             closeModal();
             state.masterAuthed = true;
             navigateToHash("#master");
           } else {
             showToast("Incorrect PIN.", "error");
           }
+        };
+      }
+
+      function openDetailedResultModal(resultId) {
+        const res = state.db.results.find(r => r.id === resultId);
+        if (!res) return;
+        const mc = res.markingCorrect !== undefined ? res.markingCorrect : 4;
+        const mw = res.markingWrong !== undefined ? res.markingWrong : 1;
+
+        const root = document.getElementById("modal-root");
+        root.innerHTML = `
+          <div class="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90dvh] flex flex-col overflow-hidden">
+              <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                <div class="min-w-0">
+                  <h3 class="text-sm sm:text-base font-extrabold text-slate-900 truncate">${escapeHtml(res.studentName)} &bull; Detailed Result</h3>
+                  <p class="text-xs text-slate-500 truncate">${escapeHtml(res.examTitle)} (${escapeHtml(res.className || "")})</p>
+                </div>
+                <button id="dr-close" class="px-3 py-1.5 rounded-xl bg-slate-100 text-xs font-bold text-slate-700">Close</button>
+              </div>
+              <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-body p-5 space-y-4">
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div class="p-3 rounded-2xl bg-slate-900 text-white text-center">
+                    <div class="text-lg font-extrabold font-mono-code">${res.score}/${res.maxMarks}</div>
+                    <div class="text-[10px] text-slate-300">Score</div>
+                  </div>
+                  <div class="p-3 rounded-2xl bg-emerald-50 text-emerald-800 text-center">
+                    <div class="text-lg font-extrabold font-mono-code">${res.correct}</div>
+                    <div class="text-[10px] font-bold">Correct (+${mc})</div>
+                  </div>
+                  <div class="p-3 rounded-2xl bg-rose-50 text-rose-800 text-center">
+                    <div class="text-lg font-extrabold font-mono-code">${res.wrong}</div>
+                    <div class="text-[10px] font-bold">Wrong (-${mw})</div>
+                  </div>
+                  <div class="p-3 rounded-2xl bg-indigo-50 text-indigo-800 text-center">
+                    <div class="text-lg font-extrabold font-mono-code">${res.accuracy || 0}%</div>
+                    <div class="text-[10px] font-bold">Accuracy</div>
+                  </div>
+                </div>
+                <div class="text-xs text-slate-500 flex flex-wrap justify-between gap-2">
+                  <span>Submitted: ${formatDateTime(res.submittedAt)}</span>
+                  <span>Tab Switches: <strong class="${res.tabSwitches > 0 ? "text-rose-600" : "text-slate-700"}">${res.tabSwitches || 0}</strong></span>
+                </div>
+                <div class="space-y-3">
+                  ${renderResultsBreakdownHtml(res)}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        document.getElementById("dr-close").onclick = closeModal;
+        renderMathInContainer(root);
+      }
+
+      function openLeaderboardModal(examId) {
+        const exam = state.db.exams.find(e => e.id === examId);
+        if (!exam) return;
+        // Best score per student for this exam
+        const bestByStu = {};
+        (state.db.results || []).forEach(r => {
+          if (r.examId !== examId) return;
+          const key = normalizeStudentName(r.studentName);
+          if (!bestByStu[key] || r.score > bestByStu[key].score) {
+            bestByStu[key] = r;
+          }
+        });
+        const ranked = Object.values(bestByStu).sort((a, b) => (b.score - a.score) || ((b.accuracy || 0) - (a.accuracy || 0))).slice(0, 10);
+
+        const root = document.getElementById("modal-root");
+        root.innerHTML = `
+          <div class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full max-h-[85dvh] flex flex-col overflow-hidden">
+              <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                <div>
+                  <h3 class="text-base font-extrabold text-slate-900">🏆 Class Leaderboard</h3>
+                  <p class="text-xs text-slate-500 truncate">${escapeHtml(exam.title)}</p>
+                </div>
+                <button id="lb-close" class="px-3 py-1.5 rounded-xl bg-slate-100 text-xs font-bold text-slate-700">Close</button>
+              </div>
+              <div class="flex-1 min-h-0 overflow-y-auto scroll-body p-4 space-y-2">
+                ${ranked.length === 0 ? `
+                  <p class="text-xs text-slate-500 text-center py-6">No submissions yet for this exam.</p>
+                ` : ranked.map((r, i) => `
+                  <div class="p-3 rounded-2xl border ${i === 0 ? "border-amber-300 bg-amber-50/70" : "border-slate-200 bg-white"} flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3 min-w-0">
+                      <span class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-extrabold ${i < 3 ? "bg-amber-400 text-slate-950" : "bg-slate-100 text-slate-700"}">#${i + 1}</span>
+                      <div class="min-w-0">
+                        <p class="text-sm font-extrabold text-slate-900 truncate">${escapeHtml(r.studentName)}</p>
+                        <p class="text-[11px] text-slate-500">Accuracy: ${r.accuracy || 0}%</p>
+                      </div>
+                    </div>
+                    <span class="text-sm font-extrabold font-mono-code text-indigo-600 shrink-0">${r.score}/${r.maxMarks}</span>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+          </div>
+        `;
+        document.getElementById("lb-close").onclick = closeModal;
+      }
+
+      function openQuestionAnalyticsModal(examId) {
+        const exam = state.db.exams.find(e => e.id === examId);
+        if (!exam) return;
+        const examResults = state.db.results.filter(r => r.examId === examId && Array.isArray(r.breakdown));
+        const stats = (exam.questions || []).map((q, idx) => {
+          let correct = 0, wrong = 0, skipped = 0;
+          examResults.forEach(r => {
+            const b = r.breakdown.find(x => x.index === idx);
+            if (!b || b.status === "skipped") skipped++;
+            else if (b.status === "correct") correct++;
+            else wrong++;
+          });
+          const total = correct + wrong + skipped;
+          const wrongPct = total > 0 ? Math.round((wrong / total) * 100) : 0;
+          return { idx, text: q.text, correct, wrong, skipped, wrongPct };
+        }).sort((a, b) => b.wrongPct - a.wrongPct);
+
+        const root = document.getElementById("modal-root");
+        root.innerHTML = `
+          <div class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full max-h-[88dvh] flex flex-col overflow-hidden">
+              <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                <div>
+                  <h3 class="text-base font-extrabold text-slate-900">Question-Wise Analytics</h3>
+                  <p class="text-xs text-slate-500">${escapeHtml(exam.title)} &bull; ${examResults.length} submissions analyzed</p>
+                </div>
+                <button id="qa-close" class="px-3 py-1.5 rounded-xl bg-slate-100 text-xs font-bold text-slate-700">Close</button>
+              </div>
+              <div class="flex-1 min-h-0 overflow-y-auto scroll-body p-4 space-y-2.5">
+                ${stats.length === 0 ? `<p class="text-xs text-slate-500 text-center py-6">No questions in this exam.</p>` : stats.map(s => `
+                  <div class="p-3.5 rounded-2xl border border-slate-200 bg-white space-y-1.5">
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="text-xs font-extrabold text-indigo-600">Q${s.idx + 1}</span>
+                      <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold ${s.wrongPct >= 50 ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700"}">${s.wrongPct}% Wrong Rate</span>
+                    </div>
+                    <p class="text-xs font-bold text-slate-900">${escapeHtml(s.text)}</p>
+                    <p class="text-[11px] font-semibold text-slate-500">
+                      <span class="text-emerald-600">Correct: ${s.correct}</span> &bull; <span class="text-rose-600">Wrong: ${s.wrong}</span> &bull; Skipped: ${s.skipped}
+                    </p>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+          </div>
+        `;
+        document.getElementById("qa-close").onclick = closeModal;
+        renderMathInContainer(root);
+      }
+
+      function openMissedExamModal(examId) {
+        const exam = state.db.exams.find(e => e.id === examId);
+        if (!exam) return;
+        const classStudents = (state.db.students || []).filter(s =>
+          !isStudentExpelled(s.name) && (s.classId === exam.classId || classKeysMatch(s.className, exam.className))
+        );
+        const submittedSet = new Set(
+          (state.db.results || []).filter(r => r.examId === examId).map(r => normalizeStudentName(r.studentName))
+        );
+        const missed = classStudents.filter(s => !submittedSet.has(s.normName));
+
+        const root = document.getElementById("modal-root");
+        root.innerHTML = `
+          <div class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full max-h-[85dvh] flex flex-col overflow-hidden">
+              <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                <div>
+                  <h3 class="text-base font-extrabold text-slate-900">Who Missed This Exam</h3>
+                  <p class="text-xs text-slate-500">${escapeHtml(exam.title)} &bull; ${missed.length} of ${classStudents.length} missed</p>
+                </div>
+                <button id="me-close" class="px-3 py-1.5 rounded-xl bg-slate-100 text-xs font-bold text-slate-700">Close</button>
+              </div>
+              <div class="flex-1 min-h-0 overflow-y-auto scroll-body p-4 space-y-2">
+                ${missed.length === 0 ? `
+                  <p class="text-xs text-emerald-700 font-bold text-center py-6">All registered students in this class have taken the exam!</p>
+                ` : missed.map(s => `
+                  <div class="p-3 rounded-xl border border-slate-200 flex items-center justify-between">
+                    <div>
+                      <p class="text-sm font-extrabold text-slate-900">${escapeHtml(s.name)}</p>
+                      <p class="text-[11px] text-slate-500">First Login: ${formatDateTime(s.firstLoginAt)}</p>
+                    </div>
+                    <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800">Not Taken</span>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+          </div>
+        `;
+        document.getElementById("me-close").onclick = closeModal;
+      }
+
+      function openExpelConfirmModal(studentName, className) {
+        const root = document.getElementById("modal-root");
+        root.innerHTML = `
+          <div class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-sm w-full p-6 space-y-4">
+              <h3 class="text-base font-extrabold text-rose-600">Expel Student from App?</h3>
+              <p class="text-xs text-slate-600"><strong>${escapeHtml(studentName)}</strong> will be immediately blocked from accessing chapters and exams until reinstated.</p>
+              <input id="expel-reason" type="text" placeholder="Optional reason (e.g., Malpractice / Left batch)"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold" />
+              <div class="flex justify-end gap-2">
+                <button id="exp-cancel" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Cancel</button>
+                <button id="exp-confirm" class="px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold">Confirm Expel</button>
+              </div>
+            </div>
+          </div>
+        `;
+        document.getElementById("exp-cancel").onclick = closeModal;
+        document.getElementById("exp-confirm").onclick = async () => {
+          const reason = (document.getElementById("expel-reason").value || "").trim();
+          const norm = normalizeStudentName(studentName);
+          state.db.expelledStudents = state.db.expelledStudents || {};
+          state.db.expelledStudents[norm] = {
+            name: studentName,
+            className: className || "",
+            reason,
+            expelledAt: new Date().toISOString()
+          };
+          closeModal();
+          render();
+          await pushAllToCloud(true);
+          showToast(studentName + " has been expelled from the app.", "warning");
+        };
+      }
+
+      function openManualExpelModal() {
+        const root = document.getElementById("modal-root");
+        root.innerHTML = `
+          <div class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-sm w-full p-6 space-y-3.5">
+              <h3 class="text-base font-extrabold text-rose-600">Expel Student by Name</h3>
+              <input id="man-exp-name" type="text" placeholder="Exact Student Name"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold" />
+              <input id="man-exp-reason" type="text" placeholder="Optional reason"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs" />
+              <div class="flex justify-end gap-2 pt-1">
+                <button id="mexp-cancel" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Cancel</button>
+                <button id="mexp-ok" class="px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold">Expel</button>
+              </div>
+            </div>
+          </div>
+        `;
+        document.getElementById("mexp-cancel").onclick = closeModal;
+        document.getElementById("mexp-ok").onclick = async () => {
+          const name = (document.getElementById("man-exp-name").value || "").trim();
+          if (!name) { showToast("Enter a student name.", "warning"); return; }
+          const reason = (document.getElementById("man-exp-reason").value || "").trim();
+          const norm = normalizeStudentName(name);
+          state.db.expelledStudents = state.db.expelledStudents || {};
+          state.db.expelledStudents[norm] = { name, className: "", reason, expelledAt: new Date().toISOString() };
+          closeModal();
+          render();
+          await pushAllToCloud(true);
+          showToast(name + " has been expelled.", "warning");
+        };
+      }
+
+      function openAskDoubtModal(contextTitle) {
+        const root = document.getElementById("modal-root");
+        root.innerHTML = `
+          <div class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-3.5">
+              <h3 class="text-base font-extrabold text-slate-900">Ask Your Teacher</h3>
+              <p class="text-xs text-indigo-600 font-bold">Topic: ${escapeHtml(contextTitle || "General")}</p>
+              <textarea id="modal-doubt-q" rows="3" placeholder="Type your doubt here..."
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm"></textarea>
+              <div class="flex justify-end gap-2">
+                <button id="md-cancel" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Cancel</button>
+                <button id="md-send" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">Send Doubt</button>
+              </div>
+            </div>
+          </div>
+        `;
+        document.getElementById("md-cancel").onclick = closeModal;
+        document.getElementById("md-send").onclick = async () => {
+          const q = (document.getElementById("modal-doubt-q").value || "").trim();
+          if (!q) { showToast("Please type your doubt.", "warning"); return; }
+          state.db.doubts = state.db.doubts || [];
+          state.db.doubts.unshift({
+            id: uid("dbt"),
+            studentName: state.student.name,
+            classId: state.student.classId,
+            className: state.student.className,
+            contextTitle: contextTitle || "General",
+            question: q,
+            reply: "",
+            createdAt: new Date().toISOString(),
+            repliedAt: ""
+          });
+          closeModal();
+          await pushAllToCloud(true);
+          showToast("Doubt sent to your teacher!", "success");
         };
       }
 
@@ -1990,12 +2986,18 @@
           return;
         }
         const existing = examId ? state.db.exams.find(e => e.id === examId) : null;
+        const marking = getExamMarking(existing);
+        let schedEnabled = existing ? !!existing.scheduleEnabled : false;
+
         const root = document.getElementById("modal-root");
         root.innerHTML = `
-          <div class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-6">
-              <h3 class="text-base font-extrabold text-slate-900">${existing ? "Edit MCQ Exam" : "Create Timed MCQ Exam"}</h3>
-              <form id="exam-modal-form" class="mt-4 space-y-3.5">
+          <div class="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full max-h-[90dvh] flex flex-col overflow-hidden">
+              <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                <h3 class="text-base font-extrabold text-slate-900">${existing ? "Edit MCQ Exam" : "Create Timed MCQ Exam"}</h3>
+                <button id="ex-close" class="text-slate-400 hover:text-slate-700 font-bold text-lg">&times;</button>
+              </div>
+              <form id="exam-modal-form" class="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-body p-5 space-y-3.5">
                 <div>
                   <label class="block text-xs font-bold text-slate-600 mb-1">Class *</label>
                   <select id="ex-class" required class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold bg-white">
@@ -2019,6 +3021,61 @@
                   <input id="ex-title" type="text" required value="${escapeHtml(existing ? existing.title : "")}" placeholder="e.g., Electrostatics Timed Test"
                     class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold" />
                 </div>
+
+                <!-- Custom Marking Scheme -->
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">Correct Marks (+)</label>
+                    <input id="ex-mark-c" type="number" min="1" max="20" value="${marking.correct}"
+                      class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-semibold" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">Wrong Penalty (-)</label>
+                    <input id="ex-mark-w" type="number" min="0" max="10" value="${marking.wrong}"
+                      class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-semibold" />
+                  </div>
+                </div>
+
+                <!-- Exam Integrity Options -->
+                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                  <label class="flex items-center justify-between text-xs font-bold text-slate-800 cursor-pointer">
+                    <span>Shuffle Questions &amp; Options</span>
+                    <input id="ex-shuffle" type="checkbox" ${existing && existing.shuffleEnabled ? "checked" : ""} class="rounded text-indigo-600" />
+                  </label>
+                  <div class="flex items-center justify-between gap-2 text-xs font-bold text-slate-800">
+                    <span>Tab-Switch Auto-Submit Limit (0 = Off)</span>
+                    <input id="ex-tablimit" type="number" min="0" max="10" value="${existing && existing.tabSwitchLimit !== undefined ? existing.tabSwitchLimit : 3}"
+                      class="w-16 px-2 py-1 rounded-lg border border-slate-300 text-center text-xs font-bold" />
+                  </div>
+                </div>
+
+                <!-- Schedule Exam ON / OFF Switch -->
+                <div class="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-200 space-y-3">
+                  <div class="flex items-center justify-between gap-2">
+                    <div>
+                      <div class="text-xs font-extrabold text-slate-900">Schedule Exam Window</div>
+                      <div id="ex-sched-sub" class="text-[11px] font-semibold text-slate-600">
+                        ${schedEnabled ? "ON: Students must take exam in scheduled time" : "OFF: Students can take exam anytime"}
+                      </div>
+                    </div>
+                    <button type="button" id="ex-sched-toggle" class="toggle-track ${schedEnabled ? "on bg-indigo-600" : "bg-slate-300"}">
+                      <span class="toggle-thumb"></span>
+                    </button>
+                  </div>
+                  <div id="ex-sched-fields" class="${schedEnabled ? "space-y-2.5" : "hidden"}">
+                    <div>
+                      <label class="block text-[11px] font-bold text-slate-700 mb-1">Start Date &amp; Time</label>
+                      <input id="ex-start" type="datetime-local" value="${escapeHtml(existing ? existing.startTime || "" : "")}"
+                        class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white" />
+                    </div>
+                    <div>
+                      <label class="block text-[11px] font-bold text-slate-700 mb-1">End Date &amp; Time</label>
+                      <input id="ex-end" type="datetime-local" value="${escapeHtml(existing ? existing.endTime || "" : "")}"
+                        class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white" />
+                    </div>
+                  </div>
+                </div>
+
                 <div class="flex justify-end gap-2 pt-2">
                   <button type="button" id="ex-cancel" class="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Cancel</button>
                   <button type="submit" class="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold">Save Exam</button>
@@ -2027,9 +3084,25 @@
             </div>
           </div>
         `;
+        document.getElementById("ex-close").onclick = closeModal;
         document.getElementById("ex-cancel").onclick = closeModal;
+        document.getElementById("ex-sched-toggle").onclick = () => {
+          schedEnabled = !schedEnabled;
+          const btn = document.getElementById("ex-sched-toggle");
+          btn.className = "toggle-track " + (schedEnabled ? "on bg-indigo-600" : "bg-slate-300");
+          document.getElementById("ex-sched-fields").className = schedEnabled ? "space-y-2.5" : "hidden";
+          document.getElementById("ex-sched-sub").textContent = schedEnabled
+            ? "ON: Students must take exam in scheduled time"
+            : "OFF: Students can take exam anytime";
+        };
         document.getElementById("exam-modal-form").onsubmit = async (e) => {
           e.preventDefault();
+          const startTime = document.getElementById("ex-start").value || "";
+          const endTime = document.getElementById("ex-end").value || "";
+          if (schedEnabled && (!startTime || !endTime)) {
+            showToast("Please select both Start and End date/time when Schedule is ON.", "warning");
+            return;
+          }
           const selectedClassId = document.getElementById("ex-class").value;
           const selectedClassObj = state.db.classes.find(c => c.id === selectedClassId);
           const payload = {
@@ -2039,6 +3112,14 @@
             subject: document.getElementById("ex-subject").value.trim() || "General",
             durationMins: parseInt(document.getElementById("ex-duration").value, 10) || 15,
             title: document.getElementById("ex-title").value.trim(),
+            markingCorrect: Math.max(1, parseInt(document.getElementById("ex-mark-c").value, 10) || 4),
+            markingWrong: Math.max(0, parseInt(document.getElementById("ex-mark-w").value, 10) || 0),
+            shuffleEnabled: document.getElementById("ex-shuffle").checked,
+            tabSwitchLimit: Math.max(0, parseInt(document.getElementById("ex-tablimit").value, 10) || 0),
+            scheduleEnabled: schedEnabled,
+            startTime,
+            endTime,
+            showLeaderboard: true,
             questions: existing ? (existing.questions || []) : [],
             htmlPaper: existing ? (existing.htmlPaper || "") : ""
           };
@@ -2209,7 +3290,18 @@
       // =======================================================================
       window.portal = {
         manualSync() { syncFromCloud(true); },
+        toggleDarkMode() {
+          applyTheme(!state.darkMode);
+          render();
+        },
         openMasterPinModal,
+        openDetailedResultModal,
+        openLeaderboardModal,
+        openQuestionAnalyticsModal,
+        openMissedExamModal,
+        openAskDoubtModal,
+        openExpelConfirmModal,
+        openManualExpelModal,
         goHome() { navigateToHash("#home"); },
 
         setHomeTab(tab) {
@@ -2237,9 +3329,37 @@
           render();
         },
 
+        async submitDoubtFromHome() {
+          const topic = (document.getElementById("student-doubt-topic").value || "").trim() || "General";
+          const q = (document.getElementById("student-doubt-text").value || "").trim();
+          if (!q) { showToast("Please type your doubt first.", "warning"); return; }
+          state.db.doubts = state.db.doubts || [];
+          state.db.doubts.unshift({
+            id: uid("dbt"),
+            studentName: state.student.name,
+            classId: state.student.classId,
+            className: state.student.className,
+            contextTitle: topic,
+            question: q,
+            reply: "",
+            createdAt: new Date().toISOString(),
+            repliedAt: ""
+          });
+          render();
+          await pushAllToCloud(true);
+          showToast("Doubt sent to your teacher!", "success");
+        },
+
         startExam(examId) {
+          const exam = state.db.exams.find(e => e.id === examId);
+          if (!exam) return;
           if (state.student && getExamAttemptStatus(examId, state.student.name).locked) {
             showToast("You have already submitted this exam. Ask Master for retake permission.", "warning");
+            return;
+          }
+          const sched = getExamScheduleStatus(exam);
+          if (!sched.allowed) {
+            showToast("Exam is scheduled: " + sched.label, "warning");
             return;
           }
           navigateToHash("#exam/" + examId);
@@ -2250,9 +3370,9 @@
           navigateToHash("#home");
         },
 
-        selectOption(qIdx, oIdx) {
+        selectOption(qIdx, origOptIdx) {
           if (!state.activeExam) return;
-          state.activeExam.answers[qIdx] = oIdx;
+          state.activeExam.answers[qIdx] = origOptIdx;
           render();
         },
 
@@ -2304,6 +3424,12 @@
           );
         },
 
+        forceLogout() {
+          state.student = null;
+          saveLocalSession();
+          navigateToHash("#login");
+        },
+
         confirmLogout() {
           showConfirmModal(
             "Switch Student / Logout?",
@@ -2344,6 +3470,21 @@
 
         setMasterResultExam(val) {
           state.masterResultExamFilter = val;
+          render();
+        },
+
+        setMasterStudentClass(val) {
+          state.masterStudentClassFilter = val;
+          render();
+        },
+
+        setMasterStudentSearch(val) {
+          state.masterStudentSearch = val;
+          render();
+        },
+
+        setMasterStudentStatus(val) {
+          state.masterStudentStatusFilter = val;
           render();
         },
 
@@ -2388,6 +3529,20 @@
         openExamModal,
         openQuestionsModal,
 
+        async toggleExamSchedule(examId) {
+          const ex = state.db.exams.find(e => e.id === examId);
+          if (!ex) return;
+          if (!ex.scheduleEnabled && (!ex.startTime || !ex.endTime)) {
+            openExamModal(examId);
+            showToast("Set Start & End time to turn Schedule ON.", "info");
+            return;
+          }
+          ex.scheduleEnabled = !ex.scheduleEnabled;
+          render();
+          await pushAllToCloud(true);
+          showToast(ex.scheduleEnabled ? "Scheduled Exam Window: ON" : "Scheduled Exam Window: OFF (Anytime)", "success");
+        },
+
         deleteExam(id) {
           showConfirmModal("Delete Exam?", "This exam and its questions will be removed.", "Delete", async () => {
             state.db.exams = state.db.exams.filter(e => e.id !== id);
@@ -2420,8 +3575,69 @@
           showToast("Exam locked again for " + r.studentName + ".", "info");
         },
 
+        async reinstateStudent(normName) {
+          if (state.db.expelledStudents && state.db.expelledStudents[normName]) {
+            const name = state.db.expelledStudents[normName].name || normName;
+            delete state.db.expelledStudents[normName];
+            render();
+            await pushAllToCloud(true);
+            showToast(name + " has been reinstated.", "success");
+          }
+        },
+
+        async addNotice() {
+          const title = (document.getElementById("notice-title").value || "").trim();
+          const message = (document.getElementById("notice-msg").value || "").trim();
+          const classId = document.getElementById("notice-class").value || "all";
+          if (!title || !message) { showToast("Enter notice title and message.", "warning"); return; }
+          state.db.notices = state.db.notices || [];
+          state.db.notices.unshift({ id: uid("ntc"), title, message, classId, createdAt: new Date().toISOString() });
+          render();
+          await pushAllToCloud(false);
+        },
+
+        async deleteNotice(id) {
+          state.db.notices = (state.db.notices || []).filter(n => n.id !== id);
+          render();
+          await pushAllToCloud(true);
+        },
+
+        async replyToDoubt(id) {
+          const d = (state.db.doubts || []).find(x => x.id === id);
+          const input = document.getElementById("reply-input-" + id);
+          if (!d || !input) return;
+          d.reply = (input.value || "").trim();
+          d.repliedAt = new Date().toISOString();
+          render();
+          await pushAllToCloud(true);
+          showToast("Reply saved!", "success");
+        },
+
+        async deleteDoubt(id) {
+          state.db.doubts = (state.db.doubts || []).filter(x => x.id !== id);
+          render();
+          await pushAllToCloud(true);
+        },
+
+        async updateMasterPin() {
+          const pin = (document.getElementById("settings-new-pin").value || "").trim();
+          if (pin.length < 4) { showToast("PIN must be at least 4 characters.", "warning"); return; }
+          state.db.settings = state.db.settings || {};
+          state.db.settings.masterPin = pin;
+          document.getElementById("settings-new-pin").value = "";
+          await pushAllToCloud(true);
+          showToast("Master PIN updated in cloud!", "success");
+        },
+
+        async toggleGlobalLeaderboard() {
+          state.db.settings = state.db.settings || {};
+          state.db.settings.leaderboardEnabled = !state.db.settings.leaderboardEnabled;
+          render();
+          await pushAllToCloud(true);
+        },
+
         exportResultsCsv() {
-          const rows = [["Date", "Student Name", "Class", "Exam", "Score", "Max Marks", "Correct", "Wrong", "Skipped"]];
+          const rows = [["Date", "Student Name", "Class", "Exam", "Score", "Max Marks", "Correct", "Wrong", "Skipped", "Tab Switches"]];
           state.db.results.forEach(r => {
             rows.push([
               r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "",
@@ -2432,7 +3648,8 @@
               r.maxMarks,
               r.correct,
               r.wrong,
-              r.unattempted
+              r.unattempted,
+              r.tabSwitches || 0
             ]);
           });
           const csv = rows.map(row => row.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(",")).join("\n");
@@ -2452,6 +3669,7 @@
       // =======================================================================
       // 12. BOOTSTRAP
       // =======================================================================
+      loadSavedTheme();
       loadLocalSession();
       loadCacheDb();
       ensureDefaultClassesIfEmpty();
