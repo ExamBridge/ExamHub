@@ -179,8 +179,9 @@
         // Navigation & Views
         view: "login", // 'login' | 'home' | 'note' | 'exam' | 'results' | 'master' | 'expelled'
         homeTab: "chapters", // 'chapters' | 'exams' | 'myresults' | 'doubts'
-        homeSubjectFilter: "All",
+        homeSubjectFilter: "",
         homeSearch: "",
+        expandedStudentLogins: {}, // { normName: true }
 
         // Active Note Reader
         activeChapterId: null,
@@ -499,21 +500,50 @@
           existing.classId = cls.id;
           existing.className = cls.name;
           existing.lastLoginAt = nowIso;
+          existing.lastActiveAt = nowIso;
+          existing.isOnline = true;
           existing.loginCount = (Number(existing.loginCount) || 1) + 1;
+          existing.loginHistory = Array.isArray(existing.loginHistory) ? existing.loginHistory : (existing.firstLoginAt ? [existing.firstLoginAt] : []);
+          existing.loginHistory.unshift(nowIso);
+          if (existing.loginHistory.length > 50) existing.loginHistory = existing.loginHistory.slice(0, 50);
           return true;
         } else {
+          const firstIso = firstTimeOverride ? new Date(firstTimeOverride).toISOString() : nowIso;
           state.db.students.unshift({
             id: uid("stu"),
             name,
             normName,
             classId: cls.id,
             className: cls.name,
-            firstLoginAt: firstTimeOverride ? new Date(firstTimeOverride).toISOString() : nowIso,
+            firstLoginAt: firstIso,
             lastLoginAt: nowIso,
-            loginCount: 1
+            lastActiveAt: nowIso,
+            isOnline: true,
+            loginCount: 1,
+            loginHistory: [firstIso]
           });
           return true;
         }
+      }
+
+      function isStudentCurrentlyActive(studentRecord) {
+        if (!studentRecord || isStudentExpelled(studentRecord.name)) return false;
+        if (studentRecord.isOnline === false) return false;
+        const ts = studentRecord.lastActiveAt || studentRecord.lastLoginAt;
+        if (!ts) return false;
+        const ms = Date.parse(ts);
+        if (!Number.isFinite(ms)) return false;
+        return (Date.now() - ms) <= 10 * 60 * 1000; // Active within last 10 minutes
+      }
+
+      function markStudentPresence(online) {
+        if (!state.student) return false;
+        const norm = normalizeStudentName(state.student.name);
+        const rec = (state.db.students || []).find(s => s.normName === norm);
+        if (!rec) return false;
+        rec.isOnline = !!online;
+        if (online) rec.lastActiveAt = new Date().toISOString();
+        return true;
       }
 
       // Exam Retake Lock, Schedule Window, & Marking Helpers
@@ -587,22 +617,22 @@
             cache: "no-store"
           });
           if (!resp.ok) throw new Error("HTTP " + resp.status);
-          const data = await resp.json();
-          if (data && typeof data === "object") {
-            hydrateDbObject(data);
-            const seeded = ensureDefaultClassesIfEmpty();
-            saveCacheDb();
-            reconcileStudentSession();
-
-            // Auto-register existing logged-in student if not yet in students registry
+            // Auto-register existing logged-in student or refresh their live active status
             let needPush = seeded;
             if (state.student && !isStudentExpelled(state.student.name)) {
               const norm = normalizeStudentName(state.student.name);
-              const exists = state.db.students.some(s => s.normName === norm);
-              if (!exists) {
+              const existingStu = state.db.students.find(s => s.normName === norm);
+              if (!existingStu) {
                 const resolved = resolveStudentClass(state.student, state.db.classes) || { id: state.student.classId, name: state.student.className };
                 recordStudentLoginInDb(state.student.name, resolved, state.student.loggedInAt);
                 needPush = true;
+              } else {
+                const lastActiveMs = existingStu.lastActiveAt ? Date.parse(existingStu.lastActiveAt) : 0;
+                if (!existingStu.isOnline || (Date.now() - lastActiveMs) > 2 * 60 * 1000) {
+                  existingStu.isOnline = true;
+                  existingStu.lastActiveAt = new Date().toISOString();
+                  needPush = true;
+                }
               }
             }
             if (needPush) {
@@ -1328,9 +1358,16 @@
         const myDoubts = (state.db.doubts || []).filter(d => normalizeStudentName(d.studentName) === myNormName);
         const activeNotices = (state.db.notices || []).filter(n => n.classId === "all" || matchesStudentClass(n, stu, state.db.classes));
 
-        const subjects = ["All", ...Array.from(new Set(classChapters.map(c => c.subject).filter(Boolean)))];
+        const subjects = Array.from(new Set(classChapters.map(c => c.subject).filter(Boolean)));
+        if (subjects.length > 0 && (!state.homeSubjectFilter || !subjects.includes(state.homeSubjectFilter))) {
+          state.homeSubjectFilter = subjects[0];
+        } else if (subjects.length === 0) {
+          state.homeSubjectFilter = "";
+        }
+        const activeSubject = state.homeSubjectFilter;
+
         const filteredChapters = classChapters.filter(c => {
-          const matchSub = state.homeSubjectFilter === "All" || c.subject === state.homeSubjectFilter;
+          const matchSub = !activeSubject || c.subject === activeSubject;
           const q = state.homeSearch.trim().toLowerCase();
           const matchSearch = !q || (c.title || "").toLowerCase().includes(q) || (c.subject || "").toLowerCase().includes(q);
           return matchSub && matchSearch;
@@ -1443,14 +1480,16 @@
                       <input type="text" value="${escapeHtml(state.homeSearch)}" oninput="window.portal.setHomeSearch(this.value)"
                         placeholder="Search chapters..."
                         class="flex-1 px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500" />
-                      <div class="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-                        ${subjects.map(sub => `
-                          <button onclick="window.portal.setHomeSubject('${escapeHtml(sub)}')"
-                            class="px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 border transition ${state.homeSubjectFilter === sub ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-600 border-slate-200"}">
-                            ${escapeHtml(sub)}
-                          </button>
-                        `).join("")}
-                      </div>
+                      ${subjects.length > 0 ? `
+                        <div class="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                          ${subjects.map(sub => `
+                            <button onclick="window.portal.setHomeSubject('${escapeHtml(sub)}')"
+                              class="px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 border transition ${activeSubject === sub ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-600 border-slate-200"}">
+                              ${escapeHtml(sub)}
+                            </button>
+                          `).join("")}
+                        </div>
+                      ` : ""}
                     </div>
                   </div>
 
@@ -2095,10 +2134,16 @@
               <option value="all" ${state.masterClassFilter === "all" ? "selected" : ""}>All Classes</option>
               ${classes.map(c => `<option value="${escapeHtml(c.id)}" ${state.masterClassFilter === c.id ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}
             </select>
-            <button onclick="window.portal.openChapterModal(null)"
-              class="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold">
-              + Upload Chapter / Note
-            </button>
+            <div class="flex flex-wrap items-center gap-2">
+              <button onclick="window.portal.sortChaptersAscending()"
+                class="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold">
+                Sort Ascending (A&ndash;Z)
+              </button>
+              <button onclick="window.portal.openChapterModal(null)"
+                class="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold">
+                + Upload Chapter / Note
+              </button>
+            </div>
           </div>
 
           <div class="space-y-3">
@@ -2106,7 +2151,7 @@
               <div class="bg-white rounded-3xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">
                 No chapters uploaded yet.
               </div>
-            ` : filtered.map(ch => {
+            ` : filtered.map((ch, idx) => {
               const cls = classes.find(c => c.id === ch.classId);
               return `
                 <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -2117,7 +2162,11 @@
                     </div>
                     <h3 class="text-sm font-extrabold text-slate-900 mt-1.5">${escapeHtml(ch.title)}</h3>
                   </div>
-                  <div class="flex items-center gap-2 shrink-0">
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    <button onclick="window.portal.moveChapter('${escapeHtml(ch.id)}', -1)" ${idx === 0 ? "disabled" : ""}
+                      class="px-2.5 py-1.5 rounded-xl text-xs font-bold border border-slate-200 ${idx === 0 ? "text-slate-300 cursor-not-allowed" : "text-slate-700 hover:bg-slate-100"}" title="Move Up">&uarr;</button>
+                    <button onclick="window.portal.moveChapter('${escapeHtml(ch.id)}', 1)" ${idx === filtered.length - 1 ? "disabled" : ""}
+                      class="px-2.5 py-1.5 rounded-xl text-xs font-bold border border-slate-200 ${idx === filtered.length - 1 ? "text-slate-300 cursor-not-allowed" : "text-slate-700 hover:bg-slate-100"}" title="Move Down">&darr;</button>
                     <button onclick="window.portal.openChapterModal('${escapeHtml(ch.id)}')" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700">Edit</button>
                     <button onclick="window.portal.deleteChapter('${escapeHtml(ch.id)}')" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 text-rose-600">Delete</button>
                   </div>
@@ -2287,6 +2336,11 @@
                         </button>
                       `
                     ) : ""}
+
+                    <button onclick="window.portal.deleteResult('${escapeHtml(r.id)}')"
+                      class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-600">
+                      Delete
+                    </button>
                   </div>
                 </div>
               `;
@@ -2295,7 +2349,7 @@
         `;
       }
 
-      // Dedicated Master Section: Student First Logins & Expulsion Management
+      // Dedicated Master Section: Student First Logins, All Logins, Live Active Status & Expulsion
       function renderMasterStudentsTab() {
         const students = state.db.students || [];
         const q = (state.masterStudentSearch || "").trim().toLowerCase();
@@ -2303,20 +2357,27 @@
           const matchCls = state.masterStudentClassFilter === "all" || s.classId === state.masterStudentClassFilter;
           const matchSearch = !q || (s.name || "").toLowerCase().includes(q) || (s.className || "").toLowerCase().includes(q);
           const exp = isStudentExpelled(s.name);
+          const online = isStudentCurrentlyActive(s);
           const matchStatus = state.masterStudentStatusFilter === "all"
             || (state.masterStudentStatusFilter === "expelled" && exp)
+            || (state.masterStudentStatusFilter === "online" && online)
             || (state.masterStudentStatusFilter === "active" && !exp);
           return matchCls && matchSearch && matchStatus;
         });
 
         const expelledCount = Object.keys(state.db.expelledStudents || {}).length;
+        const onlineCount = students.filter(s => isStudentCurrentlyActive(s)).length;
 
         return `
           <div class="bg-white rounded-3xl border border-slate-200 p-4 space-y-3 shadow-sm">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h2 class="text-sm font-extrabold text-slate-900">Student First Logins &amp; Expulsion Control</h2>
-                <p class="text-xs text-slate-500">Total Registered: <strong>${students.length}</strong> &bull; Expelled: <strong class="text-rose-600">${expelledCount}</strong></p>
+                <h2 class="text-sm font-extrabold text-slate-900">Student Logins &amp; Expulsion Control</h2>
+                <p class="text-xs text-slate-500">
+                  Total: <strong>${students.length}</strong> &bull;
+                  In App Now: <strong class="text-emerald-600">${onlineCount}</strong> &bull;
+                  Expelled: <strong class="text-rose-600">${expelledCount}</strong>
+                </p>
               </div>
               <button onclick="window.portal.openManualExpelModal()"
                 class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold">
@@ -2336,7 +2397,8 @@
               <select onchange="window.portal.setMasterStudentStatus(this.value)"
                 class="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white">
                 <option value="all" ${state.masterStudentStatusFilter === "all" ? "selected" : ""}>All Students</option>
-                <option value="active" ${state.masterStudentStatusFilter === "active" ? "selected" : ""}>Active Only</option>
+                <option value="online" ${state.masterStudentStatusFilter === "online" ? "selected" : ""}>Active in App Now</option>
+                <option value="active" ${state.masterStudentStatusFilter === "active" ? "selected" : ""}>Not Expelled</option>
                 <option value="expelled" ${state.masterStudentStatusFilter === "expelled" ? "selected" : ""}>Expelled Only</option>
               </select>
             </div>
@@ -2349,35 +2411,74 @@
               </div>
             ` : filtered.map(s => {
               const expRec = getExpulsionRecord(s.name);
+              const isOnline = isStudentCurrentlyActive(s);
+              const history = Array.isArray(s.loginHistory) && s.loginHistory.length > 0
+                ? s.loginHistory
+                : [s.lastLoginAt, s.firstLoginAt].filter(Boolean);
+              const isExpanded = !!state.expandedStudentLogins[s.normName];
+              const visibleHistory = isExpanded ? history : history.slice(0, 3);
+
               return `
-                <div class="bg-white rounded-2xl border ${expRec ? "border-rose-300 bg-rose-50/30" : "border-slate-200"} p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div class="space-y-1">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <h3 class="text-sm font-extrabold text-slate-900">${escapeHtml(s.name)}</h3>
-                      <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700">${escapeHtml(s.className || s.classId)}</span>
-                      ${expRec ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-600 text-white">EXPELLED</span>` : `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700">Active</span>`}
+                <div class="bg-white rounded-2xl border ${expRec ? "border-rose-300 bg-rose-50/30" : isOnline ? "border-emerald-300" : "border-slate-200"} p-4 shadow-sm space-y-3">
+                  <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div class="space-y-1">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <h3 class="text-sm font-extrabold text-slate-900">${escapeHtml(s.name)}</h3>
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700">${escapeHtml(s.className || s.classId)}</span>
+                        ${expRec ? `
+                          <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-600 text-white">EXPELLED</span>
+                        ` : isOnline ? `
+                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-100 text-emerald-800">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>Active
+                          </span>
+                        ` : `
+                          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>Offline
+                          </span>
+                        `}
+                      </div>
+                      <div class="text-xs text-slate-600">
+                        <span class="font-bold text-slate-800">First Login:</span> ${formatDateTime(s.firstLoginAt)}
+                      </div>
+                      <div class="text-[11px] text-slate-500">
+                        Last Seen: ${formatDateTime(s.lastActiveAt || s.lastLoginAt)} &bull; Total Logins: <strong>${s.loginCount || history.length || 1}</strong>
+                      </div>
+                      ${expRec && expRec.reason ? `<div class="text-[11px] font-semibold text-rose-700">Expulsion Reason: ${escapeHtml(expRec.reason)}</div>` : ""}
                     </div>
-                    <div class="text-xs text-slate-600">
-                      <span class="font-bold text-slate-800">First Login:</span> ${formatDateTime(s.firstLoginAt)}
+
+                    <div class="flex items-center gap-2 shrink-0">
+                      ${expRec ? `
+                        <button onclick="window.portal.reinstateStudent('${escapeHtml(s.normName)}')"
+                          class="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white">
+                          Reinstate Student
+                        </button>
+                      ` : `
+                        <button onclick="window.portal.openExpelConfirmModal('${escapeHtml(s.name)}', '${escapeHtml(s.className || "")}')"
+                          class="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white">
+                          Expel from App
+                        </button>
+                      `}
                     </div>
-                    <div class="text-[11px] text-slate-500">
-                      Last Login: ${formatDateTime(s.lastLoginAt)} &bull; Total Logins: <strong>${s.loginCount || 1}</strong>
-                    </div>
-                    ${expRec && expRec.reason ? `<div class="text-[11px] font-semibold text-rose-700">Expulsion Reason: ${escapeHtml(expRec.reason)}</div>` : ""}
                   </div>
 
-                  <div class="flex items-center gap-2 shrink-0">
-                    ${expRec ? `
-                      <button onclick="window.portal.reinstateStudent('${escapeHtml(s.normName)}')"
-                        class="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white">
-                        Reinstate Student
-                      </button>
-                    ` : `
-                      <button onclick="window.portal.openExpelConfirmModal('${escapeHtml(s.name)}', '${escapeHtml(s.className || "")}')"
-                        class="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white">
-                        Expel from App
-                      </button>
-                    `}
+                  <!-- All Recorded Logins List -->
+                  <div class="pt-2.5 border-t border-slate-100">
+                    <div class="flex items-center justify-between gap-2 mb-1.5">
+                      <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">All Logins (${history.length})</span>
+                      ${history.length > 3 ? `
+                        <button onclick="window.portal.toggleStudentLogins('${escapeHtml(s.normName)}')"
+                          class="text-[11px] font-bold text-indigo-600 hover:underline">
+                          ${isExpanded ? "Show Less" : "Show All (" + history.length + ")"}
+                        </button>
+                      ` : ""}
+                    </div>
+                    <div class="flex flex-wrap gap-1.5">
+                      ${visibleHistory.map((ts, i) => `
+                        <span class="px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[11px] font-mono-code text-slate-700">
+                          #${history.length - i}: ${formatDateTime(ts)}
+                        </span>
+                      `).join("")}
+                    </div>
                   </div>
                 </div>
               `;
@@ -2971,7 +3072,7 @@
             const i = state.db.chapters.findIndex(c => c.id === existing.id);
             if (i >= 0) state.db.chapters[i] = payload;
           } else {
-            state.db.chapters.unshift(payload);
+            state.db.chapters.push(payload);
           }
           closeModal();
           render();
@@ -3425,6 +3526,7 @@
         },
 
         forceLogout() {
+          if (markStudentPresence(false)) pushAllToCloud(true);
           state.student = null;
           saveLocalSession();
           navigateToHash("#login");
@@ -3436,6 +3538,7 @@
             "You will be returned to the Student Login screen.",
             "Logout",
             () => {
+              if (markStudentPresence(false)) pushAllToCloud(true);
               state.student = null;
               saveLocalSession();
               navigateToHash("#login");
@@ -3448,7 +3551,7 @@
         exitMaster() {
           state.masterAuthed = false;
           reconcileStudentSession();
-          state.homeSubjectFilter = "All";
+          state.homeSubjectFilter = "";
           state.homeSearch = "";
           navigateToHash(state.student ? "#home" : "#login");
         },
@@ -3518,12 +3621,56 @@
 
         openChapterModal,
 
+        async moveChapter(id, delta) {
+          const list = state.db.chapters;
+          const idx = list.findIndex(c => c.id === id);
+          if (idx < 0) return;
+          const targetIdx = idx + delta;
+          if (targetIdx < 0 || targetIdx >= list.length) return;
+          const temp = list[idx];
+          list[idx] = list[targetIdx];
+          list[targetIdx] = temp;
+          render();
+          await pushAllToCloud(true);
+        },
+
+        async sortChaptersAscending() {
+          state.db.chapters.sort((a, b) =>
+            String(a.title || "").localeCompare(String(b.title || ""), undefined, { numeric: true, sensitivity: "base" })
+          );
+          render();
+          await pushAllToCloud(true);
+          showToast("Chapters sorted in ascending order.", "success");
+        },
+
         deleteChapter(id) {
           showConfirmModal("Delete Chapter?", "This chapter will be removed for all students.", "Delete", async () => {
             state.db.chapters = state.db.chapters.filter(c => c.id !== id);
             render();
             await pushAllToCloud(false);
           }, true);
+        },
+
+        deleteResult(resultId) {
+          const r = state.db.results.find(x => x.id === resultId);
+          if (!r) return;
+          showConfirmModal(
+            "Delete Exam Result?",
+            "Remove " + (r.studentName || "this student") + "'s submission for \"" + (r.examTitle || "Exam") + "\"? It will also be removed from the leaderboard.",
+            "Delete Result",
+            async () => {
+              state.db.results = state.db.results.filter(x => x.id !== resultId);
+              render();
+              await pushAllToCloud(true);
+              showToast("Exam result deleted from records & leaderboard.", "success");
+            },
+            true
+          );
+        },
+
+        toggleStudentLogins(normName) {
+          state.expandedStudentLogins[normName] = !state.expandedStudentLogins[normName];
+          render();
         },
 
         openExamModal,
